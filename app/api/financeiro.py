@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from app.core.db import transaction
 from app.pix import service as pix_service
-from app.repositories import carteiras, empresas, movimentacoes_carteira
+from app.repositories import carteiras, empresas, movimentacoes_carteira, usuarios
 from app.services import abastecimento, caixa as caixa_service, movimentacoes
 
 bp = Blueprint("financeiro", __name__)
