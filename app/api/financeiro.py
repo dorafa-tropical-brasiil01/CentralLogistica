@@ -27,7 +27,7 @@ def criar_empresa():
     if empresas.get(empresa_id):
         return jsonify({"error": "empresa_ja_existe"}), 409
 
-    empresa = empresas.create(empresa_id, nome, **data)
+    empresa = empresas.create(empresa_id, nome)
     return jsonify(empresa), 201
 
 
