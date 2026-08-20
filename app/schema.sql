@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS caixa_operacoes (
     saldo_contado NUMERIC(12,2),
     diferenca NUMERIC(12,2),
     motivo TEXT,
+    abastecimento_id BIGINT,
+    movimentacao_id BIGINT,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -98,18 +100,6 @@ CREATE TABLE IF NOT EXISTS movimentacoes_carteira (
     referencia_externa TEXT,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
-
-ALTER TABLE caixa_operacoes
-    ADD COLUMN IF NOT EXISTS abastecimento_id BIGINT REFERENCES abastecimentos(id),
-    ADD COLUMN IF NOT EXISTS movimentacao_id BIGINT REFERENCES movimentacoes_carteira(id);
-
-ALTER TABLE abastecimentos
-    ADD CONSTRAINT IF NOT EXISTS fk_abastecimento_caixa_operacao
-    FOREIGN KEY (caixa_operacao_id) REFERENCES caixa_operacoes(id);
-
-ALTER TABLE movimentacoes_carteira
-    ADD CONSTRAINT IF NOT EXISTS fk_movimentacao_caixa_operacao
-    FOREIGN KEY (caixa_operacao_id) REFERENCES caixa_operacoes(id);
 
 CREATE TABLE IF NOT EXISTS ordens_servico (
     id BIGSERIAL PRIMARY KEY,
