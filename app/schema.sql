@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     ativo BOOLEAN DEFAULT TRUE,
     senha_hash TEXT,
     senha_salt TEXT,
+    localizacao_atual JSONB,
+    ultima_localizacao_em TIMESTAMPTZ,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -176,3 +178,7 @@ CREATE TABLE IF NOT EXISTS frete_config (
     criado_em TIMESTAMPTZ DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migrações de colunas (IF NOT EXISTS não atualiza tabelas existentes)
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS localizacao_atual JSONB;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultima_localizacao_em TIMESTAMPTZ;

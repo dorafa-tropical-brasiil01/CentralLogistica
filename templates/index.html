@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a2540" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <title>Logística — Do'Rafa</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand: #0a2540; --brand-2: #123a5e; --accent: #00d4aa; --accent-2: #00b894;
+      --warn: #f4a261; --danger: #e76f51; --info: #3a86ff;
+      --bg: #f6f8fb; --surface: #ffffff; --surface-2: #f1f5f9;
+      --text: #0f172a; --text-2: #475569; --text-3: #94a3b8;
+      --border: #e2e8f0; --shadow: 0 8px 24px rgba(10,37,64,.08); --shadow-lg: 0 20px 48px rgba(10,37,64,.12);
+      --radius: 18px; --radius-sm: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #050c14; --surface: #0b1623; --surface-2: #111f2f;
+        --text: #e8f3fd; --text-2: #94a3b8; --text-3: #64748b;
+        --border: #1e2d3d; --shadow: 0 8px 24px rgba(0,0,0,.35); --shadow-lg: 0 20px 48px rgba(0,0,0,.45);
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.35; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+    .app { display: flex; flex-direction: column; height: 100%; }
+    .hidden { display: none !important; }
+
+    .login { display: grid; place-items: center; min-height: 100vh; padding: 20px; background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); }
+    .login-card { width: min(420px, 100%); background: var(--surface); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow-lg); text-align: center; }
+    .login-card h1 { color: var(--brand); font-weight: 900; font-size: 24px; margin-bottom: 6px; }
+    .login-card p { color: var(--text-2); font-size: 14px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 14px; text-align: left; }
+    .form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+    .form-group input { width: 100%; padding: 14px; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: 15px; font-family: inherit; background: var(--surface-2); color: var(--text); }
+    .form-group input:focus { outline: none; border-color: var(--accent); }
+    .btn { width: 100%; border: 0; border-radius: var(--radius-sm); padding: 14px; font-size: 15px; font-weight: 900; cursor: pointer; transition: filter .15s; }
+    .btn-primary { background: var(--accent); color: #002c22; }
+    .btn-primary:hover { filter: brightness(1.05); }
+    .btn-accent { background: var(--accent); color: #002c22; }
+    .btn-warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+    .btn-danger { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
+    .btn-info { background: #eff6ff; color: var(--info); border: 1px solid #bfdbfe; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .topbar { position: sticky; top: 0; z-index: 50; background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); color: #fff; padding: 12px 18px; box-shadow: 0 4px 20px rgba(10,37,64,.25); }
+    .topbar-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--accent); display: grid; place-items: center; color: var(--brand); font-weight: 900; font-size: 14px; }
+    .brand-title { font-weight: 900; font-size: 18px; }
+    .brand-sub { font-size: 12px; opacity: .8; font-weight: 500; }
+    .topbar-actions { display: flex; gap: 8px; }
+    .btn-ghost { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+    .main { flex: 1; display: grid; grid-template-columns: 380px 1fr; gap: 0; overflow: hidden; max-width: 1400px; margin: 0 auto; width: 100%; }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; overflow-y: auto; } }
+
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { flex: 1; padding: 14px; font-weight: 800; font-size: 13px; text-align: center; cursor: pointer; color: var(--text-3); border-bottom: 3px solid transparent; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--accent); background: var(--surface-2); }
+    .panel { flex: 1; overflow-y: auto; padding: 14px; display: none; }
+    .panel.active { display: block; }
+
+    .section-title { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .6px; color: var(--text-3); margin: 8px 0 10px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); }
+    .card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card-title { font-weight: 900; font-size: 15px; }
+    .card-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 999px; }
+    .badge-ready { background: #e6fbf6; color: var(--accent-2); border: 1px solid #b6f3e6; }
+    .badge-assigned { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .badge-delivered { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-offline { background: #f1f5f9; color: var(--text-3); border: 1px solid var(--border); }
+    .badge-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+    .order-list { display: flex; flex-direction: column; gap: 10px; }
+    .order-mini { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; transition: transform .1s; }
+    .order-mini:hover { transform: translateX(4px); border-color: var(--accent); }
+    .order-mini .id { font-weight: 900; font-size: 14px; color: var(--brand); }
+    .order-mini .addr { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+    .order-mini .meta { font-size: 11px; color: var(--text-3); margin-top: 6px; display: flex; gap: 10px; }
+
+    .driver-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .driver-item:last-child { border-bottom: 0; }
+    .driver-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--brand-2); color: #fff; display: grid; place-items: center; font-weight: 900; font-size: 15px; }
+    .driver-info { flex: 1; }
+    .driver-name { font-weight: 800; font-size: 14px; }
+    .driver-status { font-size: 12px; color: var(--text-2); }
+    .driver-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,170,.2); }
+    .driver-dot.busy { background: var(--warn); }
+    .driver-dot.offline { background: var(--text-3); }
+
+    .run-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin: 14px; box-shadow: var(--shadow); }
+    .run-header { display: flex; align-items: center; justify-content: space-between; }
+    .run-title { font-weight: 900; font-size: 18px; }
+    .run-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+
+    .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(120px); z-index: 1000; background: var(--text); color: #fff; padding: 12px 22px; border-radius: 999px; font-weight: 700; font-size: 14px; box-shadow: var(--shadow-lg); opacity: 0; transition: all .3s ease; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .empty { text-align: center; padding: 40px 20px; color: var(--text-3); font-weight: 600; }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; display: none; align-items: center; justify-content: center; padding: 18px; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border-radius: var(--radius); width: min(400px, 100%); padding: 24px; box-shadow: var(--shadow-lg); }
+    .modal h3 { font-weight: 900; margin-bottom: 14px; }
+    .modal select, .modal button { width: 100%; margin-top: 10px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); font-family: inherit; font-size: 14px; }
+    .modal button { background: var(--accent); color: #002c22; border: 0; font-weight: 900; cursor: pointer; }
+
+    .map-wrap { position: relative; background: #0b1623; overflow: hidden; display: flex; flex-direction: column; min-height: 400px; }
+    .map-canvas { width: 100%; height: 100%; display: block; }
+    .map-overlay { position: absolute; top: 14px; left: 14px; z-index: 10; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 12px; backdrop-filter: blur(8px); font-size: 13px; }
+    .map-legend { position: absolute; bottom: 14px; right: 14px; z-index: 10; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; backdrop-filter: blur(8px); }
+    .map-legend span { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .dot.driver { background: var(--accent); }
+    .dot.ready { background: var(--warn); }
+    .dot.done { background: var(--info); }
+
+    .refresh-btn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text-2); }
+  </style>
+</head>
+<body>
+  <div id="login" class="login">
+    <div class="login-card">
+      <h1>Logística Do'Rafa</h1>
+      <p>Acesse com suas credenciais</p>
+      <form onsubmit="doLogin(event)">
+        <div class="form-group">
+          <label>Usuário</label>
+          <input id="loginUser" type="text" placeholder="seu.usuario" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input id="loginPass" type="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button class="btn btn-primary" type="submit">Entrar</button>
+      </form>
+      <p style="font-size:11px;color:var(--text-3);margin-top:14px">REMO — Central Logística</p>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-icon">LOG</div>
+          <div>
+            <div class="brand-title">Logística Do'Rafa</div>
+            <div class="brand-sub" id="roleLabel">—</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn-ghost refresh-btn" onclick="carregarDados()">↻ Atualizar</button>
+          <button class="btn-ghost" onclick="doLogout()">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="despachadorView" class="main">
+      <aside class="sidebar">
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this, 'pendentes')">Pendentes</div>
+          <div class="tab" onclick="switchTab(this, 'entregadores')">Entregadores</div>
+          <div class="tab" onclick="switchTab(this, 'corridas')">Corridas</div>
+        </div>
+        <div class="panel active" id="panel-pendentes">
+          <div class="section-title">Ordens aguardando atribuição</div>
+          <div class="order-list" id="readyList"></div>
+        </div>
+        <div class="panel" id="panel-entregadores">
+          <div class="section-title">Entregadores</div>
+          <div id="driverList"></div>
+        </div>
+        <div class="panel" id="panel-corridas">
+          <div class="section-title">Corridas ativas</div>
+          <div id="runList"></div>
+        </div>
+      </aside>
+      <div class="map-wrap">
+        <canvas id="mapCanvas" class="map-canvas"></canvas>
+        <div class="map-overlay">
+          <div style="font-weight:900">Acompanhamento</div>
+          <div id="mapStats" style="margin-top:4px;opacity:.9;font-size:12px">—</div>
+        </div>
+        <div class="map-legend">
+          <span><i class="dot ready"></i> Pendente</span>
+          <span><i class="dot driver"></i> Em rota</span>
+          <span><i class="dot done"></i> Entregue</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="entregadorView" class="main" style="grid-template-columns:1fr; padding:14px; overflow-y:auto; display:none;">
+      <div id="entregadorRun"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="assignModal">
+    <div class="modal">
+      <h3>Atribuir ordem</h3>
+      <p id="assignText" style="font-size:13px;color:var(--text-2);margin-bottom:10px">Selecione o entregador.</p>
+      <select id="assignSelect"></select>
+      <button onclick="confirmAssign()">Atribuir</button>
+      <button style="background:var(--surface-2);color:var(--text);margin-top:8px" onclick="closeAssign()">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = '/api/pwa';
+    let token = sessionStorage.getItem('remo_token') || '';
+    let currentUser = null;
+    let assignOrdemId = null;
+    let pendentes = [];
+    let entregadores = [];
+    let ativas = [];
+    let pollTimer = null;
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast show';
+      setTimeout(() => el.classList.remove('show'), 3000);
+    }
+
+    function money(v) { return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
+
+    async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const r = await fetch(API + path, { ...opts, headers });
+      if (r.status === 401) { doLogout(); throw new Error('nao_autenticado'); }
+      return r;
+    }
+
+    // --- Login ---
+    async function doLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById('loginUser').value.trim();
+      const senha = document.getElementById('loginPass').value.trim();
+      if (!username || !senha) return;
+      try {
+        const r = await fetch(API + '/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, senha }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          showToast('Erro: ' + (j.error || r.status));
+          return;
+        }
+        const j = await r.json();
+        token = j.token;
+        sessionStorage.setItem('remo_token', token);
+        currentUser = j.usuario;
+        showApp();
+      } catch (err) {
+        showToast('Erro de conexão');
+      }
+    }
+
+    function doLogout() {
+      if (token) api('/logout', { method: 'POST' }).catch(() => {});
+      token = '';
+      sessionStorage.removeItem('remo_token');
+      currentUser = null;
+      document.getElementById('login').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    async function showApp() {
+      document.getElementById('login').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      const perfil = currentUser.perfil;
+      document.getElementById('roleLabel').textContent = (perfil === 'ENTREGADOR' ? 'Entregador: ' : 'Central / Despachador') + ' — ' + (currentUser.nome || currentUser.username);
+
+      if (perfil === 'ENTREGADOR') {
+        document.getElementById('despachadorView').style.display = 'none';
+        document.getElementById('entregadorView').style.display = 'flex';
+        renderEntregadorView();
+        pollTimer = setInterval(renderEntregadorView, 10000);
+      } else {
+        document.getElementById('entregadorView').style.display = 'none';
+        document.getElementById('despachadorView').style.display = 'grid';
+        initMap();
+        carregarDados();
+        pollTimer = setInterval(carregarDados, 10000);
+      }
+    }
+
+    function switchTab(el, name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('panel-' + name).classList.add('active');
+    }
+
+    // --- Carregar dados (despachador) ---
+    async function carregarDados() {
+      if (!currentUser || currentUser.perfil === 'ENTREGADOR') return;
+      try {
+        const [r1, r2, r3] = await Promise.all([
+          api('/ordens?status=PENDENTE'),
+          api('/entregadores'),
+          api('/ordens?status=ATIVAS'),
+        ]);
+        const j1 = await r1.json();
+        const j2 = await r2.json();
+        const j3 = await r3.json();
+        pendentes = j1.ordens || [];
+        entregadores = j2.entregadores || [];
+        ativas = j3.ordens || [];
+        renderSidebar();
+      } catch (err) {
+        if (err.message !== 'nao_autenticado') showToast('Erro ao carregar dados');
+      }
+    }
+
+    function renderSidebar() {
+      // Pendentes
+      const readyEl = document.getElementById('readyList');
+      if (!pendentes.length) { readyEl.innerHTML = '<div class="empty">Nenhuma ordem pendente</div>'; }
+      else {
+        readyEl.innerHTML = pendentes.map(o => {
+          const p = o.payload || {};
+          const cliente = p.cliente_nome || '—';
+          const taxa = money(o.taxa);
+          const proto = o.protocolo || o.solicitacao_id;
+          return `
+            <div class="order-mini" onclick="openAssign(${o.id})">
+              <div class="card-row">
+                <div class="id">${proto}</div>
+                <span class="badge badge-ready">Pendente</span>
+              </div>
+              <div class="addr">${cliente}</div>
+              <div class="meta"><span>${o.solicitacao_id}</span><span>${taxa}</span></div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Entregadores
+      const driverEl = document.getElementById('driverList');
+      if (!entregadores.length) { driverEl.innerHTML = '<div class="empty">Nenhum entregador cadastrado</div>'; }
+      else {
+        driverEl.innerHTML = entregadores.map(d => {
+          const iniciais = (d.nome || d.username || '?').split(' ').map(n => n[0]).join('').substring(0, 2);
+          const statusLabel = d.status === 'busy' ? 'Em corrida' : 'Disponível';
+          return `
+            <div class="driver-item">
+              <div class="driver-avatar">${iniciais}</div>
+              <div class="driver-info">
+                <div class="driver-name">${d.nome || d.username}</div>
+                <div class="driver-status">${statusLabel} ${d.corridas_ativas ? '(' + d.corridas_ativas + ' ativa(s))' : ''}</div>
+              </div>
+              <div class="driver-dot ${d.status === 'busy' ? 'busy' : ''}"></div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Corridas ativas
+      const runEl = document.getElementById('runList');
+      if (!ativas.length) { runEl.innerHTML = '<div class="empty">Nenhuma corrida ativa</div>'; }
+      else {
+        runEl.innerHTML = ativas.map(o => {
+          const e = entregadores.find(d => d.id === o.entregador_id);
+          const proto = o.protocolo || o.solicitacao_id;
+          const badgeClass = o.status === 'EM_ROTA' ? 'badge-assigned' : 'badge-pending';
+          return `
+            <div class="card">
+              <div class="card-row">
+                <div>
+                  <div class="card-title">${proto}</div>
+                  <div class="card-sub">${e ? e.nome : '—'} • ${o.status}</div>
+                </div>
+                <span class="badge ${badgeClass}">${o.status}</span>
+              </div>
+              <div style="margin-top:6px;font-size:12px;color:var(--text-2)">${o.solicitacao_id} • ${money(o.taxa)}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      document.getElementById('mapStats').textContent = entregadores.filter(d => d.status !== 'offline').length + ' entregador(es) • ' + pendentes.length + ' pendente(s) • ' + ativas.length + ' ativa(s)';
+    }
+
+    // --- Atribuir ---
+    function openAssign(ordemId) {
+      assignOrdemId = ordemId;
+      const select = document.getElementById('assignSelect');
+      const disponiveis = entregadores.filter(d => d.status === 'online');
+      if (!disponiveis.length) {
+        select.innerHTML = '<option value="">Nenhum entregador disponível</option>';
+      } else {
+        select.innerHTML = disponiveis.map(d => `<option value="${d.id}">${d.nome || d.username} — Disponível</option>`).join('');
+      }
+      document.getElementById('assignText').textContent = 'Atribuir ordem #' + ordemId + ' para:';
+      document.getElementById('assignModal').classList.add('open');
+    }
+
+    function closeAssign() { document.getElementById('assignModal').classList.remove('open'); }
+
+    async function confirmAssign() {
+      const entregadorId = parseInt(document.getElementById('assignSelect').value);
+      if (!entregadorId) { closeAssign(); return; }
+      try {
+        const r = await api('/ordens/' + assignOrdemId + '/atribuir', {
+          method: 'POST',
+          body: JSON.stringify({ entregador_id: entregadorId }),
+        });
+        if (r.ok) {
+          showToast('Ordem atribuída com sucesso');
+          closeAssign();
+          carregarDados();
+        } else {
+          const j = await r.json().catch(() => ({}));
+          showToast('Erro: ' + (j.error || r.status));
+        }
+      } catch (err) { showToast('Erro de conexão'); }
+    }
+
+    // --- Mapa (canvas simples) ---
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
+    let mapW = 0, mapH = 0;
+
+    function resizeCanvas() {
+      const wrap = canvas.parentElement;
+      canvas.width = wrap.clientWidth;
+      canvas.height = wrap.clientHeight;
+      mapW = canvas.width; mapH = canvas.height;
+    }
+
+    function initMap() {
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      requestAnimationFrame(animateMap);
+    }
+
+    function animateMap() {
+      if (!mapW) { requestAnimationFrame(animateMap); return; }
+      ctx.fillStyle = '#0b1623';
+      ctx.fillRect(0, 0, mapW, mapH);
+      // Grid
+      ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 1;
+      for (let x = 0; x < mapW; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, mapH); ctx.stroke(); }
+      for (let y = 0; y < mapH; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mapW, y); ctx.stroke(); }
+      // Pontos das ordens (posição simulada no canvas)
+      pendentes.forEach((o, i) => {
+        const x = 80 + (i * 120) % (mapW - 160);
+        const y = 80 + (i * 80) % (mapH - 160);
+        drawPoint(x, y, '#f4a261', o.protocolo || o.solicitacao_id, 'Pendente');
+      });
+      ativas.forEach((o, i) => {
+        const x = mapW * 0.6 + (i * 50) % 100;
+        const y = mapH * 0.4 + (i * 60) % 120;
+        drawPoint(x, y, '#00d4aa', o.protocolo || o.solicitacao_id, o.status);
+      });
+      requestAnimationFrame(animateMap);
+    }
+
+    function drawPoint(x, y, color, label, sub) {
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      if (label) {
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Inter, sans-serif';
+        ctx.fillText(label, x + 14, y + 4);
+        if (sub) { ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; ctx.fillText(sub, x + 14, y + 16); }
+      }
+    }
+
+    // --- Entregador view ---
+    async function renderEntregadorView() {
+      const container = document.getElementById('entregadorRun');
+      try {
+        const r = await api('/minhas-corridas');
+        const j = await r.json();
+        const corridas = j.corridas || [];
+        if (!corridas.length) {
+          container.innerHTML = `
+            <div class="run-card" style="text-align:center;padding:40px">
+              <div style="width:96px;height:96px;border-radius:50%;background:var(--surface-2);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:16px;font-weight:900;color:var(--accent);padding:8px;line-height:1.1">LIVRE</div>
+              <div style="font-weight:900;font-size:20px">Você está livre</div>
+              <div style="color:var(--text-2);font-size:14px;margin:8px 0">Aguarde a central atribuir uma corrida.</div>
+            </div>
+            <div class="card" style="background:var(--surface-2)">
+              <div class="section-title">Minha localização</div>
+              <p style="font-size:13px;color:var(--text-2)">Compartilhe sua localização para a central acompanhar.</p>
+              <button class="btn btn-info" style="margin-top:10px" onclick="enviarLocalizacao()">Enviar localização agora</button>
+            </div>
+          `;
+          return;
+        }
+        const corridasHtml = corridas.map(o => {
+          const p = o.payload || {};
+          const cliente = p.cliente_nome || '—';
+          const mapsUrl = p.client_maps_url || '';
+          const proto = o.protocolo || o.solicitacao_id;
+          const badgeClass = o.status === 'EM_ROTA' ? 'badge-assigned' : 'badge-pending';
+          const addr = [p.client_maps_url ? '' : '', o.solicitacao_id].join(' ');
+          return `
+            <div class="card" style="margin-bottom:10px">
+              <div class="card-row">
+                <div>
+                  <div class="card-title">${proto}</div>
+                  <div class="card-sub">${cliente} • ${money(o.taxa)}</div>
+                </div>
+                <span class="badge ${badgeClass}">${o.status}</span>
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+                ${o.status === 'ATRIBUIDO' ? `<button class="btn btn-accent" style="flex:1" onclick="atualizarStatus(${o.id}, 'EM_ROTA')">Iniciar rota</button>` : ''}
+                ${o.status === 'EM_ROTA' ? `<button class="btn btn-accent" style="flex:1" onclick="atualizarStatus(${o.id}, 'ENTREGUE')">Entregue</button>` : ''}
+                <button class="btn btn-warn" style="flex:1" onclick="atualizarStatus(${o.id}, 'CANCELADO')">Cancelar</button>
+                ${mapsUrl ? `<button class="btn btn-info" style="flex:1" onclick="openMaps('${mapsUrl}')">Mapa</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        container.innerHTML = `
+          <div class="run-card">
+            <div class="run-header">
+              <div class="run-title">Minhas corridas</div>
+              <span class="badge badge-assigned">${corridas.length} ativa(s)</span>
+            </div>
+          </div>
+          <div style="padding:0 14px 14px">${corridasHtml}</div>
+          <div class="card" style="margin:0 14px 14px;background:var(--surface-2)">
+            <div class="section-title">Minha localização</div>
+            <button class="btn btn-info" onclick="enviarLocalizacao()">Enviar localização agora</button>
+          </div>
+        `;
+      } catch (err) {
+        if (err.message !== 'nao_autenticado') container.innerHTML = '<div class="empty">Erro ao carregar corridas</div>';
+      }
+    }
+
+    async function atualizarStatus(ordemId, status) {
+      try {
+        const r = await api('/ordens/' + ordemId + '/status', {
+          method: 'POST',
+          body: JSON.stringify({ status }),
+        });
+        if (r.ok) {
+          showToast('Status atualizado: ' + status);
+          renderEntregadorView();
+        } else {
+          const j = await r.json().catch(() => ({}));
+          showToast('Erro: ' + (j.error || r.status));
+        }
+      } catch (err) { showToast('Erro de conexão'); }
+    }
+
+    async function enviarLocalizacao() {
+      if (!navigator.geolocation) { showToast('GPS não disponível'); return; }
+      navigator.geolocation.getCurrentPosition(async pos => {
+        try {
+          await api('/localizacao', {
+            method: 'POST',
+            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy }),
+          });
+          showToast('Localização enviada');
+        } catch (err) { showToast('Erro ao enviar localização'); }
+      }, () => showToast('Não foi possível obter localização'), { enableHighAccuracy: true, timeout: 10000 });
+    }
+
+    function openMaps(url) { window.open(url, '_blank'); }
+
+    // --- Init ---
+    if ('serviceWorker' in navigator && location.protocol.includes('http')) {
+      navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+    }
+    // Auto-login se tem token
+    if (token) {
+      api('/me').then(r => r.ok ? r.json() : null).then(j => {
+        if (j && j.ok) { currentUser = j.usuario; showApp(); }
+        else { doLogout(); }
+      }).catch(() => doLogout());
+    }
+  </script>
+</body>
+</html>

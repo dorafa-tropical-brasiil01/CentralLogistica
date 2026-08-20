@@ -82,6 +82,8 @@ def update_status(conn, ordem_id: int, status: str, *, entregador_id: int | None
         campos.append("entregue_em = NOW()")
     elif status == "CANCELADO":
         campos.append("cancelado_em = NOW()")
+    elif status == "ATRIBUIDO":
+        campos.append("atribuido_em = NOW()")
 
     if entregador_id is not None:
         campos.append("entregador_id = %s")
@@ -92,3 +94,61 @@ def update_status(conn, ordem_id: int, status: str, *, entregador_id: int | None
         f"UPDATE ordens_servico SET {', '.join(campos)} WHERE id = %s",
         valores,
     )
+
+
+def list_pendentes() -> list[dict[str, Any]]:
+    """Lista ordens pendentes (aguardando atribuição)."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM ordens_servico
+            WHERE status = 'PENDENTE'
+            ORDER BY criado_em ASC
+            """,
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def list_by_entregador(entregador_id: int) -> list[dict[str, Any]]:
+    """Lista ordens atribuídas a um entregador."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM ordens_servico
+            WHERE entregador_id = %s AND status IN ('ATRIBUIDO', 'EM_ROTA')
+            ORDER BY criado_em DESC
+            """,
+            (entregador_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def list_ativas() -> list[dict[str, Any]]:
+    """Lista ordens em andamento (atribuídas/em rota)."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM ordens_servico
+            WHERE status IN ('ATRIBUIDO', 'EM_ROTA')
+            ORDER BY criado_em DESC
+            """,
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def list_recent_entregues(limit: int = 20) -> list[dict[str, Any]]:
+    """Lista ordens entregues recentemente."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM ordens_servico
+            WHERE status = 'ENTREGUE'
+            ORDER BY entregue_em DESC LIMIT %s
+            """,
+            (limit,),
+        )
+        return [dict(r) for r in cur.fetchall()]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from app.core import config
 from app.migracoes.runner import ensure_schema
@@ -13,26 +13,22 @@ from app.pix.webhook import processar as processar_webhook_pix
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="static", template_folder="templates")
     app.secret_key = config.SECRET_KEY
 
     ensure_schema()
 
     # Blueprints
-    from app.api import financeiro, frete, ordens
+    from app.api import financeiro, frete, ordens, pwa
     app.register_blueprint(financeiro.bp, url_prefix="/api/v1")
     app.register_blueprint(ordens.bp, url_prefix="/api/v1")
     app.register_blueprint(frete.bp, url_prefix="/api/v1")
+    app.register_blueprint(pwa.bp, url_prefix="/api/pwa")
 
+    # PWA — página principal
     @app.route("/")
-    def index():
-        return jsonify({
-            "ok": True,
-            "service": "Central Logística (REMO)",
-            "version": "0.1.0",
-            "health": "/health",
-            "api": "/api/v1",
-        })
+    def index_page():
+        return render_template("index.html")
 
     @app.route("/health")
     def health():
