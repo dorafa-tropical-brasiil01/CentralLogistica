@@ -31,6 +31,22 @@ def criar_empresa():
     return jsonify(empresa), 201
 
 
+@bp.post("/usuarios")
+def criar_usuario():
+    data = _json()
+    username = str(data.get("username") or "").strip()
+    nome = str(data.get("nome") or "").strip()
+    perfil = str(data.get("perfil") or "OPERADOR").strip().upper()
+    empresa_id = str(data.get("empresa_id") or "").strip() or None
+    if not username or not nome:
+        return jsonify({"error": "username e nome obrigatorios"}), 400
+    try:
+        usuario = usuarios.create(username, nome, perfil, empresa_id=empresa_id)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(usuario), 201
+
+
 @bp.get("/empresas/<empresa_id>")
 def obter_empresa(empresa_id: str):
     empresa = empresas.get(empresa_id)
