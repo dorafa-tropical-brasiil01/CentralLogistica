@@ -255,10 +255,13 @@
       <div class="module" id="mod-carteira">
         <div class="grid-2">
           <div class="card">
-            <div class="card-title">Carteiras</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div class="card-title" style="margin:0">Carteiras</div>
+              <button class="btn btn-accent btn-sm" onclick="openSaldoModal()">+ Adicionar saldo</button>
+            </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Empresa</th><th>Saldo</th><th>Status</th></tr></thead>
+                <thead><tr><th>Empresa</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead>
                 <tbody id="cartTable"></tbody>
               </table>
             </div>
@@ -395,6 +398,21 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('areaModal')">Cancelar</button>
       <button class="btn btn-accent" onclick="saveArea()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Adicionar Saldo -->
+<div class="modal-bg" id="saldoModal">
+  <div class="modal">
+    <h3>Adicionar saldo</h3>
+    <div class="form-group"><label>Carteira (cliente)</label><select id="saldoCarteira"></select></div>
+    <div class="form-group"><label>Valor (R$)</label><input id="saldoValor" type="number" step="0.01" placeholder="50.00" /></div>
+    <div class="form-group"><label>Método de pagamento</label><select id="saldoMetodo"><option value="DINHEIRO">Dinheiro</option><option value="PIX">PIX</option><option value="DEBITO">Cartão débito</option><option value="CREDITO">Cartão crédito</option><option value="AJUSTE">Ajuste manual</option></select></div>
+    <div class="form-group"><label>Descrição (opcional)</label><input id="saldoDesc" type="text" placeholder="Pagamento em dinheiro" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('saldoModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveSaldo()">Adicionar</button>
     </div>
   </div>
 </div>
@@ -550,9 +568,43 @@ async function loadCarteiras() {
     const tb = document.getElementById('cartTable');
     const sel = document.getElementById('extCarteira');
     sel.innerHTML = '<option value="">Selecione...</option>' + j.carteiras.map(c => `<option value="${c.id}">${c.empresa}</option>`).join('');
-    if (!j.carteiras.length) { tb.innerHTML = '<tr><td colspan="3" class="empty">Nenhuma carteira</td></tr>'; return; }
-    tb.innerHTML = j.carteiras.map(c => `<tr><td>${c.empresa}</td><td style="color:${c.saldo > 0 ? 'var(--accent-2)' : 'var(--danger)'};font-weight:900">${money(c.saldo)}</td><td><span class="badge ${c.ativo ? 'badge-success' : 'badge-pending'}">${c.ativo ? 'Ativa' : 'Inativa'}</span></td></tr>`).join('');
+    if (!j.carteiras.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Nenhuma carteira</td></tr>'; return; }
+    tb.innerHTML = j.carteiras.map(c => `<tr><td>${c.empresa}</td><td style="color:${c.saldo > 0 ? 'var(--accent-2)' : 'var(--danger)'};font-weight:900">${money(c.saldo)}</td><td><span class="badge ${c.ativo ? 'badge-success' : 'badge-pending'}">${c.ativo ? 'Ativa' : 'Inativa'}</span></td><td><button class="btn btn-accent btn-sm" onclick="openSaldoModal(${c.id})">+ Saldo</button></td></tr>`).join('');
   } catch { toast('Erro ao carregar carteiras'); }
+}
+
+// ADICIONAR SALDO
+async function openSaldoModal(carteiraId) {
+  const sel = document.getElementById('saldoCarteira');
+  try {
+    const r = await api('/financeiro/carteiras');
+    const j = await r.json();
+    sel.innerHTML = '<option value="">Selecione...</option>' + j.carteiras.map(c => `<option value="${c.id}" ${c.id === carteiraId ? 'selected' : ''}>${c.empresa} — ${money(c.saldo)}</option>`).join('');
+  } catch { toast('Erro ao carregar carteiras'); }
+  document.getElementById('saldoValor').value = '';
+  document.getElementById('saldoMetodo').value = 'DINHEIRO';
+  document.getElementById('saldoDesc').value = '';
+  document.getElementById('saldoModal').classList.add('open');
+}
+
+async function saveSaldo() {
+  const carteira_id = document.getElementById('saldoCarteira').value;
+  const valor = parseFloat(document.getElementById('saldoValor').value);
+  const metodo = document.getElementById('saldoMetodo').value;
+  const descricao = document.getElementById('saldoDesc').value.trim();
+  if (!carteira_id || !valor || valor <= 0) { toast('Selecione carteira e valor válido'); return; }
+  try {
+    const r = await api('/financeiro/adicionar-saldo', { method: 'POST', body: JSON.stringify({ carteira_id: parseInt(carteira_id), valor, metodo, descricao }) });
+    if (r.ok) {
+      const j = await r.json();
+      toast('Saldo adicionado! Novo saldo: ' + money(j.saldo_final));
+      closeModal('saldoModal');
+      loadCarteiras();
+    } else {
+      const j = await r.json().catch(() => ({}));
+      toast('Erro: ' + (j.error || r.status));
+    }
+  } catch { toast('Erro de conexão'); }
 }
 
 async function loadExtrato() {

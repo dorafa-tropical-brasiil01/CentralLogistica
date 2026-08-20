@@ -328,6 +328,108 @@ def financeiro_extrato(carteira_id: int):
     return jsonify({"ok": True, "extrato": items})
 
 
+@bp.post("/financeiro/adicionar-saldo")
+def financeiro_adicionar_saldo():
+    """Admin adiciona saldo a uma carteira (dinheiro ou ajuste manual).
+
+    Crédito direto na carteira — não passa por caixa nem PIX.
+    Registra movimentação no livro-razão (movimentacoes_carteira).
+    """
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    carteira_id = data.get("carteira_id")
+    try:
+        valor = float(data.get("valor") or 0)
+    except (TypeError, ValueError):
+        return _err("valor_invalido", 400)
+
+    metodo = str(data.get("metodo") or "DINHEIRO").strip().upper()
+    descricao = str(data.get("descricao") or "").strip()
+
+    if not carteira_id or valor <= 0:
+        return _err("carteira_id e valor (>0) obrigatorios", 400)
+
+    import uuid as _uuid
+    from app.repositories import carteiras as cart_repo
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        # Bloqueia carteira com FOR UPDATE
+        saldo_anterior = cart_repo.bloquear_e_ler(conn, int(carteira_id))
+        saldo_final = saldo_anterior + valor
+
+        # Cria abastecimento (para rastreabilidade)
+        cur.execute(
+            """
+            INSERT INTO abastecimentos (uuid, empresa_id, carteira_id, valor, metodo, status, confirmado_em, operador_id)
+            SELECT %s, c.empresa_id, c.id, %s, %s, 'CONFIRMADO', NOW(), %s
+            FROM carteiras c WHERE c.id = %s
+            RETURNING id
+            """,
+            (str(_uuid.uuid4()), valor, metodo, user["usuario_id"], int(carteira_id)),
+        )
+        ab_row = cur.fetchone()
+        if not ab_row:
+            return _err("carteira_nao_encontrada", 404)
+        abastecimento_id = ab_row["id"]
+
+        # Registra movimentação no livro-razão
+        cur.execute(
+            """
+            INSERT INTO movimentacoes_carteira
+                (uuid, carteira_id, abastecimento_id, tipo, descricao, valor,
+                 saldo_anterior, saldo_final, status, idempotency_key)
+            VALUES (%s, %s, %s, 'CREDITO', %s, %s, %s, %s, 'CONCLUIDO', %s)
+            RETURNING id
+            """,
+            (
+                str(_uuid.uuid4()),
+                int(carteira_id),
+                abastecimento_id,
+                descricao or f"Adição de saldo ({metodo}) — admin",
+                valor,
+                saldo_anterior,
+                saldo_final,
+                f"admin-credit-{abastecimento_id}",
+            ),
+        )
+        mov_id = cur.fetchone()["id"]
+
+        # Atualiza saldo materializado
+        cart_repo.atualizar_saldo(conn, int(carteira_id), saldo_final)
+
+        # Auditoria
+        cur.execute(
+            """
+            INSERT INTO auditoria_financeira (carteira_id, abastecimento_id, tipo, referencia, dados_json)
+            VALUES (%s, %s, 'CREDITO_MANUAL', %s, %s)
+            """,
+            (
+                int(carteira_id),
+                abastecimento_id,
+                f"mov:{mov_id}",
+                psycopg2.extras.Json({
+                    "operador": user.get("username"),
+                    "metodo": metodo,
+                    "valor": valor,
+                    "saldo_anterior": saldo_anterior,
+                    "saldo_final": saldo_final,
+                }),
+            ),
+        )
+
+    return jsonify({
+        "ok": True,
+        "abastecimento_id": abastecimento_id,
+        "movimentacao_id": mov_id,
+        "saldo_anterior": saldo_anterior,
+        "saldo_final": saldo_final,
+    }), 201
+
+
 # ============================================================
 # Módulo 4: Relatórios e Métricas (KPIs)
 # ============================================================
