@@ -46,6 +46,20 @@ CREATE TABLE IF NOT EXISTS caixas (
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS caixa_operacoes (
+    id BIGSERIAL PRIMARY KEY,
+    caixa_id BIGINT NOT NULL REFERENCES caixas(id),
+    operador_id BIGINT NOT NULL REFERENCES usuarios(id),
+    tipo TEXT NOT NULL,
+    valor NUMERIC(12,2),
+    saldo_inicial NUMERIC(12,2),
+    saldo_final_sistema NUMERIC(12,2),
+    saldo_contado NUMERIC(12,2),
+    diferenca NUMERIC(12,2),
+    motivo TEXT,
+    criado_em TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS abastecimentos (
     id BIGSERIAL PRIMARY KEY,
     uuid TEXT UNIQUE NOT NULL,
@@ -62,7 +76,7 @@ CREATE TABLE IF NOT EXISTS abastecimentos (
     confirmado_em TIMESTAMPTZ,
     expira_em TIMESTAMPTZ,
     operador_id BIGINT REFERENCES usuarios(id),
-    caixa_operacao_id BIGINT REFERENCES caixa_operacoes(id),
+    caixa_operacao_id BIGINT,
     criado_em TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (empresa_id, transacao_externa_id)
 );
@@ -72,7 +86,7 @@ CREATE TABLE IF NOT EXISTS movimentacoes_carteira (
     uuid TEXT UNIQUE NOT NULL,
     carteira_id BIGINT NOT NULL REFERENCES carteiras(id),
     abastecimento_id BIGINT REFERENCES abastecimentos(id),
-    caixa_operacao_id BIGINT REFERENCES caixa_operacoes(id),
+    caixa_operacao_id BIGINT,
     ordem_id BIGINT,
     tipo TEXT NOT NULL,
     descricao TEXT,
@@ -85,21 +99,17 @@ CREATE TABLE IF NOT EXISTS movimentacoes_carteira (
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS caixa_operacoes (
-    id BIGSERIAL PRIMARY KEY,
-    caixa_id BIGINT NOT NULL REFERENCES caixas(id),
-    operador_id BIGINT NOT NULL REFERENCES usuarios(id),
-    tipo TEXT NOT NULL,
-    valor NUMERIC(12,2),
-    saldo_inicial NUMERIC(12,2),
-    saldo_final_sistema NUMERIC(12,2),
-    saldo_contado NUMERIC(12,2),
-    diferenca NUMERIC(12,2),
-    motivo TEXT,
-    abastecimento_id BIGINT REFERENCES abastecimentos(id),
-    movimentacao_id BIGINT REFERENCES movimentacoes_carteira(id),
-    criado_em TIMESTAMPTZ DEFAULT NOW()
-);
+ALTER TABLE caixa_operacoes
+    ADD COLUMN IF NOT EXISTS abastecimento_id BIGINT REFERENCES abastecimentos(id),
+    ADD COLUMN IF NOT EXISTS movimentacao_id BIGINT REFERENCES movimentacoes_carteira(id);
+
+ALTER TABLE abastecimentos
+    ADD CONSTRAINT IF NOT EXISTS fk_abastecimento_caixa_operacao
+    FOREIGN KEY (caixa_operacao_id) REFERENCES caixa_operacoes(id);
+
+ALTER TABLE movimentacoes_carteira
+    ADD CONSTRAINT IF NOT EXISTS fk_movimentacao_caixa_operacao
+    FOREIGN KEY (caixa_operacao_id) REFERENCES caixa_operacoes(id);
 
 CREATE TABLE IF NOT EXISTS ordens_servico (
     id BIGSERIAL PRIMARY KEY,
