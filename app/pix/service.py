@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from app.core import config
 from app.core.db import transaction
-from app.pix.adapter_contract import PaymentMethod
+from app.pix.adapter_contract import CreatePaymentRequest, PaymentMethod
 from app.repositories import abastecimentos, carteiras, empresas
 
 
@@ -37,7 +36,7 @@ def criar_cobranca(*, empresa_id: str, valor: float, descricao: str | None = Non
     reference_id = empresa_id
 
     result = adapter.create_payment(
-        request=adapter.adapter_contract.CreatePaymentRequest(
+        request=CreatePaymentRequest(
             amount=valor,
             payment_method=PaymentMethod.PIX,
             reference_id=reference_id,
