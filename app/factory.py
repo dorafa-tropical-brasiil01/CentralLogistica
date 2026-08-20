@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
@@ -11,9 +12,15 @@ from app.core import config
 from app.migracoes.runner import ensure_schema
 from app.pix.webhook import processar as processar_webhook_pix
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 
 def create_app() -> Flask:
-    app = Flask(__name__, static_folder="static", template_folder="templates")
+    app = Flask(
+        __name__,
+        static_folder=str(BASE_DIR / "static"),
+        template_folder=str(BASE_DIR / "templates"),
+    )
     app.secret_key = config.SECRET_KEY
 
     ensure_schema()
