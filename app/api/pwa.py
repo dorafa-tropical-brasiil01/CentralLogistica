@@ -261,3 +261,37 @@ def _serializar_ordem(o: dict) -> dict:
         "em_rota_em": o.get("em_rota_em"),
         "entregue_em": o.get("entregue_em"),
     }
+
+
+# --- Admin: criar usuários (protegido por API key) ---
+
+@bp.post("/admin/usuarios")
+def admin_criar_usuario():
+    from app.core import config as cfg
+    header_key = request.headers.get("x-api-key", "")
+    if header_key != cfg.CENTRAL_LOGISTICA_API_KEY:
+        return jsonify({"error": "nao_autorizado"}), 401
+
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    nome = str(data.get("nome") or "").strip()
+    perfil = str(data.get("perfil") or "").strip().upper()
+    senha = str(data.get("senha") or "").strip()
+    telefone = str(data.get("telefone") or "").strip() or None
+    empresa_id = str(data.get("empresa_id") or "").strip() or None
+
+    if not username or not nome or not perfil or not senha:
+        return jsonify({"error": "username, nome, perfil e senha obrigatorios"}), 400
+
+    if perfil not in ("ADMIN", "CENTRAL", "ENTREGADOR", "OPERADOR"):
+        return jsonify({"error": "perfil_invalido"}), 400
+
+    from app.repositories import usuarios as usuarios_repo
+    existente = usuarios_repo.get_by_username(username)
+    if existente:
+        return jsonify({"error": "username_ja_existe"}), 409
+
+    user = usuarios_repo.create(username=username, nome=nome, perfil=perfil, empresa_id=empresa_id, telefone=telefone)
+    auth_service.definir_senha(user["id"], senha)
+
+    return jsonify({"ok": True, "usuario": {"id": user["id"], "username": user.get("username"), "nome": user.get("nome"), "perfil": user.get("perfil")}}), 201
