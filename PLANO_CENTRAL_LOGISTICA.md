@@ -271,6 +271,98 @@ A ordem criada inclui `payload_json` com `taxa_cliente` e `taxa_real` para audit
 
 ---
 
+## 22. Reivindicação de ordens por entregadores (modelo híbrido)
+
+### 22.1 Decisão
+
+A REMO usa um **modelo híbrido** de atribuição de ordens:
+
+1. **Entregador reivindica**: quando uma ordem chega, todos os entregadores recebem push notification. O primeiro que toca "Pegar entrega" no PWA reivindica a ordem.
+2. **Despachador atribui manualmente**: o despachador pode atribuir manualmente se necessário (ex: entregador não responde, ordem urgente).
+
+### 22.2 Regra de desempate (primeiro chega)
+
+- **Primeiro chega, primeiro leva**: o primeiro entregador que toca "Pegar entrega" ganha a ordem.
+- **Critério de desempate por proximidade**: se dois entregadores reivindicam no mesmo segundo, vence quem está mais próximo do ponto de partida (haversine).
+- A reivindicação é **atômica** (`SELECT ... FOR UPDATE`) para evitar condições de corrida.
+
+### 22.3 Fluxo
+
+```
+Ordem chega na REMO (via KDS do Cardápio)
+    ↓
+REMO cria ordem (status = PENDENTE)
+    ↓
+REMO envia push notification para TODOS os entregadores
+    ↓
+Entregadores veem a ordem no PWA (aba "Disponíveis")
+    ↓
+Entregador toca "Pegar entrega"
+    ↓
+REMO verifica: ordem ainda está PENDENTE?
+    ├── NÃO → retorna 409 (já foi atribuída)
+    └── SIM → atribui ao entregador (status = ATRIBUIDO)
+              ↓
+              Notifica outros entregadores que a ordem foi tomada
+              ↓
+              Entregador vê a corrida na aba "Minhas corridas"
+```
+
+### 22.4 Web Push API
+
+Para notificar entregadores mesmo com o app fechado:
+
+1. **VAPID keys**: geradas localmente (gratuito), configuradas no Railway
+2. **Service Worker**: recebe push e mostra notificação do sistema
+3. **Endpoint de inscrição**: `POST /api/pwa/push/inscrever` — entregador registra seu dispositivo
+4. **Endpoint de envio**: interno — REMO envia push quando ordem é criada
+
+### 22.5 Variáveis de ambiente necessárias
+
+| Variável | Descrição |
+|---|---|
+| `VAPID_PUBLIC_KEY` | Chave pública VAPID para Web Push |
+| `VAPID_PRIVATE_KEY` | Chave privada VAPID para assinar pushes |
+| `VAPID_SUBJECT` | `mailto:contato@dorafa.com.br` |
+
+### 22.6 Endpoint de reivindicação
+
+```http
+POST /api/pwa/ordens/<id>/reivindicar
+Authorization: Bearer <token_entregador>
+```
+
+**Respostas:**
+- `200` — ordem atribuída com sucesso
+- `409` — ordem já foi atribuída a outro entregador
+- `403` — entregador já tem corrida ativa
+
+### 22.7 Desempate por proximidade
+
+Se dois entregadores reivindicam no mesmo segundo:
+
+```python
+# Dentro da transação (FOR UPDATE na ordem)
+if ordem.status == 'PENDENTE':
+    # Primeiro chega — atribui direto
+    atribuir(ordem, entregador)
+elif ordem.status == 'REIVINDICANDO' and (now - ordem.reivindicado_em) < 1s:
+    # Empate no mesmo segundo — desempata por proximidade
+    dist_atual = haversine(entregador_atual.gps, origem)
+    dist_novo = haversine(novo_entregador.gps, origem)
+    if dist_novo < dist_atual:
+        atribuir(ordem, novo_entregador)
+```
+
+### 22.8 Regras adicionais
+
+- Um entregador **não pode reivindicar** se já tem corrida ativa (status `ATRIBUIDO` ou `EM_ROTA`)
+- O despachador pode **forçar atribuição** mesmo se a ordem já foi reivindicada (override)
+- Se ninguém reivindicar em **5 minutos**, a ordem fica disponível para atribuição manual do despachador
+- A notificação push inclui: protocolo, endereço, taxa e tempo estimado
+
+---
+
 ## 7. Controle de concorrência no consumo do saldo
 
 A operação de débito deve ser **transacional e protegida contra condições de corrida**.

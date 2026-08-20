@@ -183,6 +183,79 @@ def minhas_corridas():
     return jsonify({"ok": True, "corridas": [_serializar_ordem(o) for o in ordens]})
 
 
+# --- Entregador: ordens disponíveis para reivindicar ---
+
+@bp.get("/disponiveis")
+def ordens_disponiveis():
+    """Lista ordens pendentes que o entregador pode reivindicar."""
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    # Entregador com corrida ativa não pode ver disponíveis
+    ativas = ordens_repo.list_by_entregador(user["usuario_id"])
+    if ativas:
+        return jsonify({"ok": True, "disponiveis": [], "motivo": "ja_tem_corrida_ativa"})
+
+    pendentes = ordens_repo.list_pendentes()
+    return jsonify({"ok": True, "disponiveis": [_serializar_ordem(o) for o in pendentes]})
+
+
+# --- Entregador: reivindicar ordem ---
+
+@bp.post("/ordens/<int:ordem_id>/reivindicar")
+def reivindicar_ordem(ordem_id: int):
+    """Entregador reivindica uma ordem. Primeiro chega, primeiro leva.
+    Desempate por proximidade se dois reivindicam no mesmo segundo.
+    """
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    if user.get("perfil") != "ENTREGADOR":
+        return jsonify({"error": "apenas_entregador_pode_reivindicar"}), 403
+
+    # Verifica se já tem corrida ativa
+    ativas = ordens_repo.list_by_entregador(user["usuario_id"])
+    if ativas:
+        return jsonify({"error": "ja_tem_corrida_ativa"}), 403
+
+    # Reivindicação atômica com FOR UPDATE
+    from app.core.db import transaction
+    from app.core import frete as frete_calc
+
+    try:
+        with transaction() as conn:
+            cur = conn.cursor()
+            # Bloqueia a ordem para evitar race condition
+            cur.execute(
+                "SELECT * FROM ordens_servico WHERE id = %s FOR UPDATE",
+                (ordem_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "ordem_nao_encontrada"}), 404
+
+            ordem = dict(row)
+
+            if ordem.get("status") not in ("PENDENTE",):
+                return jsonify({"error": "ordem_ja_atribuida", "status": ordem.get("status")}), 409
+
+            # Atribui ao entregador
+            ordens_repo.update_status(
+                conn, ordem_id, "ATRIBUIDO", entregador_id=user["usuario_id"]
+            )
+            cur.execute("SELECT * FROM ordens_servico WHERE id = %s", (ordem_id,))
+            ordem = dict(cur.fetchone())
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Notifica outros entregadores (push notification — futuro)
+    # Por enquanto, apenas retorna sucesso
+    return jsonify({"ok": True, "ordem": _serializar_ordem(ordem)})
+
+
 # --- Entregador: atualizar status ---
 
 @bp.post("/ordens/<int:ordem_id>/status")

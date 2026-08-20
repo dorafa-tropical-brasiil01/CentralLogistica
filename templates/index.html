@@ -11,6 +11,7 @@
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
   <title>Logística — Do'Rafa</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     :root {
       --brand: #0a2540; --brand-2: #123a5e; --accent: #00d4aa; --accent-2: #00b894;
@@ -50,7 +51,7 @@
     .btn-info { background: #eff6ff; color: var(--info); border: 1px solid #bfdbfe; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-    .topbar { position: sticky; top: 0; z-index: 50; background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); color: #fff; padding: 12px 18px; box-shadow: 0 4px 20px rgba(10,37,64,.25); }
+    .topbar { position: sticky; top: 0; z-index: 1000; background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); color: #fff; padding: 12px 18px; box-shadow: 0 4px 20px rgba(10,37,64,.25); }
     .topbar-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .brand { display: flex; align-items: center; gap: 12px; }
     .brand-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--accent); display: grid; place-items: center; color: var(--brand); font-weight: 900; font-size: 14px; }
@@ -103,28 +104,36 @@
     .run-title { font-weight: 900; font-size: 18px; }
     .run-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
 
-    .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(120px); z-index: 1000; background: var(--text); color: #fff; padding: 12px 22px; border-radius: 999px; font-weight: 700; font-size: 14px; box-shadow: var(--shadow-lg); opacity: 0; transition: all .3s ease; pointer-events: none; }
+    .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(120px); z-index: 3000; background: var(--text); color: #fff; padding: 12px 22px; border-radius: 999px; font-weight: 700; font-size: 14px; box-shadow: var(--shadow-lg); opacity: 0; transition: all .3s ease; pointer-events: none; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .empty { text-align: center; padding: 40px 20px; color: var(--text-3); font-weight: 600; }
 
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; display: none; align-items: center; justify-content: center; padding: 18px; }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 18px; }
     .modal-backdrop.open { display: flex; }
     .modal { background: var(--surface); border-radius: var(--radius); width: min(400px, 100%); padding: 24px; box-shadow: var(--shadow-lg); }
     .modal h3 { font-weight: 900; margin-bottom: 14px; }
     .modal select, .modal button { width: 100%; margin-top: 10px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); font-family: inherit; font-size: 14px; }
     .modal button { background: var(--accent); color: #002c22; border: 0; font-weight: 900; cursor: pointer; }
 
-    .map-wrap { position: relative; background: #0b1623; overflow: hidden; display: flex; flex-direction: column; min-height: 400px; }
-    .map-canvas { width: 100%; height: 100%; display: block; }
-    .map-overlay { position: absolute; top: 14px; left: 14px; z-index: 10; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 12px; backdrop-filter: blur(8px); font-size: 13px; }
-    .map-legend { position: absolute; bottom: 14px; right: 14px; z-index: 10; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; backdrop-filter: blur(8px); }
+    /* MAPA LEAFLET */
+    .map-wrap { position: relative; overflow: hidden; display: flex; flex-direction: column; min-height: 400px; }
+    #map { width: 100%; height: 100%; flex: 1; z-index: 1; }
+    .map-overlay { position: absolute; top: 14px; left: 14px; z-index: 500; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 12px; backdrop-filter: blur(8px); font-size: 13px; pointer-events: none; }
+    .map-legend { position: absolute; bottom: 14px; right: 14px; z-index: 500; background: rgba(11,22,35,.85); color: #fff; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; backdrop-filter: blur(8px); pointer-events: none; }
     .map-legend span { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; }
     .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     .dot.driver { background: var(--accent); }
     .dot.ready { background: var(--warn); }
     .dot.done { background: var(--info); }
+    .dot.zone { background: rgba(0,212,170,.3); border: 1px solid var(--accent); }
 
     .refresh-btn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text-2); }
+
+    /* Marcador customizado do entregador */
+    .driver-marker { background: var(--accent); border: 3px solid #fff; border-radius: 50%; width: 32px; height: 32px; display: grid; place-items: center; font-weight: 900; font-size: 12px; color: var(--brand); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+    .order-marker { background: var(--warn); border: 3px solid #fff; border-radius: 50%; width: 28px; height: 28px; display: grid; place-items: center; font-weight: 900; font-size: 10px; color: var(--brand); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+    .order-marker.assigned { background: var(--info); }
+    .order-marker.done { background: #64748b; }
   </style>
 </head>
 <body>
@@ -185,21 +194,34 @@
         </div>
       </aside>
       <div class="map-wrap">
-        <canvas id="mapCanvas" class="map-canvas"></canvas>
+        <div id="map"></div>
         <div class="map-overlay">
-          <div style="font-weight:900">Acompanhamento</div>
+          <div style="font-weight:900">Acompanhamento em tempo real</div>
           <div id="mapStats" style="margin-top:4px;opacity:.9;font-size:12px">—</div>
         </div>
         <div class="map-legend">
           <span><i class="dot ready"></i> Pendente</span>
           <span><i class="dot driver"></i> Em rota</span>
           <span><i class="dot done"></i> Entregue</span>
+          <span><i class="dot zone"></i> Zona</span>
         </div>
       </div>
     </div>
 
-    <div id="entregadorView" class="main" style="grid-template-columns:1fr; padding:14px; overflow-y:auto; display:none;">
-      <div id="entregadorRun"></div>
+    <div id="entregadorView" class="main" style="grid-template-columns:1fr; overflow-y:auto; display:none;">
+      <div class="sidebar" style="border-right:0;">
+        <div class="tabs">
+          <div class="tab active" onclick="switchTabEnt(this, 'disp')">Disponíveis</div>
+          <div class="tab" onclick="switchTabEnt(this, 'minhas')">Minhas corridas</div>
+        </div>
+        <div class="panel active" id="panel-disp">
+          <div class="section-title">Entregas disponíveis — toque para pegar</div>
+          <div class="order-list" id="dispList"></div>
+        </div>
+        <div class="panel" id="panel-minhas">
+          <div id="entregadorRun"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -215,6 +237,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const API = '/api/pwa';
     let token = sessionStorage.getItem('remo_token') || '';
@@ -224,6 +247,36 @@
     let entregadores = [];
     let ativas = [];
     let pollTimer = null;
+    let map = null;
+    let markersLayer = null;
+    let zonesLayer = null;
+    let routesLayer = null;
+    let gpsWatchId = null;
+
+    // --- Zonas de preço (polígonos verdes) ---
+    // Coordenadas de exemplo — Goiânia. Em produção, vem da API.
+    const ZONAS_PRECO = [
+      {
+        nome: 'Centro', preco: 5.00, cor: '#00d4aa',
+        coords: [[-16.6800, -49.2700], [-16.6800, -49.2500], [-16.7200, -49.2500], [-16.7200, -49.2700]],
+      },
+      {
+        nome: 'Setor Bueno', preco: 8.00, cor: '#00b894',
+        coords: [[-16.7800, -49.2600], [-16.7800, -49.2300], [-16.8200, -49.2300], [-16.8200, -49.2600]],
+      },
+      {
+        nome: 'Jardim Goiás', preco: 10.00, cor: '#00a896',
+        coords: [[-16.7400, -49.2200], [-16.7400, -49.1900], [-16.7800, -49.1900], [-16.7800, -49.2200]],
+      },
+      {
+        nome: 'Marista', preco: 12.00, cor: '#0d9488',
+        coords: [[-16.7000, -49.2900], [-16.7000, -49.2700], [-16.7400, -49.2700], [-16.7400, -49.2900]],
+      },
+    ];
+
+    // --- Coordenadas padrão (Goiânia) ---
+    const DEFAULT_CENTER = [-16.6869, -49.2648];
+    const DEFAULT_ZOOM = 13;
 
     function showToast(msg) {
       const el = document.getElementById('toast');
@@ -274,9 +327,10 @@
       token = '';
       sessionStorage.removeItem('remo_token');
       currentUser = null;
+      if (gpsWatchId !== null) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       document.getElementById('login').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
-      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     async function showApp() {
@@ -288,8 +342,10 @@
       if (perfil === 'ENTREGADOR') {
         document.getElementById('despachadorView').style.display = 'none';
         document.getElementById('entregadorView').style.display = 'flex';
+        renderDisponiveis();
         renderEntregadorView();
-        pollTimer = setInterval(renderEntregadorView, 10000);
+        pollTimer = setInterval(() => { renderDisponiveis(); renderEntregadorView(); }, 10000);
+        iniciarGPS();
       } else {
         document.getElementById('entregadorView').style.display = 'none';
         document.getElementById('despachadorView').style.display = 'grid';
@@ -299,11 +355,194 @@
       }
     }
 
+    function switchTabEnt(el, name) {
+      document.querySelectorAll('#entregadorView .tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#entregadorView .panel').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('panel-' + name).classList.add('active');
+    }
+
+    // --- Entregador: ordens disponíveis ---
+    let disponiveis = [];
+
+    async function renderDisponiveis() {
+      const dispEl = document.getElementById('dispList');
+      if (!dispEl) return;
+      try {
+        const r = await api('/disponiveis');
+        const j = await r.json();
+        disponiveis = j.disponiveis || [];
+        if (!disponiveis.length) {
+          const motivo = j.motivo === 'ja_tem_corrida_ativa' ? 'Você já tem uma corrida ativa' : 'Nenhuma entrega disponível';
+          dispEl.innerHTML = '<div class="empty">' + motivo + '</div>';
+          return;
+        }
+        dispEl.innerHTML = disponiveis.map(o => {
+          const p = o.payload || {};
+          const cliente = p.cliente_nome || '—';
+          const taxa = money(o.taxa);
+          const proto = o.protocolo || o.solicitacao_id;
+          return `
+            <div class="order-mini" style="cursor:pointer;border-color:var(--accent);border-width:2px" onclick="reivindicar(${o.id})">
+              <div class="card-row">
+                <div class="id">${proto}</div>
+                <span class="badge badge-ready">Pegar entrega</span>
+              </div>
+              <div class="addr">${cliente}</div>
+              <div class="meta"><span>${o.solicitacao_id}</span><span>${taxa}</span></div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        if (err.message !== 'nao_autenticado') dispEl.innerHTML = '<div class="empty">Erro ao carregar</div>';
+      }
+    }
+
+    async function reivindicar(ordemId) {
+      try {
+        const r = await api('/ordens/' + ordemId + '/reivindicar', { method: 'POST' });
+        if (r.ok) {
+          showToast('Entrega pegada com sucesso!');
+          renderDisponiveis();
+          renderEntregadorView();
+          // Troca para aba "Minhas corridas"
+          const tabMinhas = document.querySelectorAll('#entregadorView .tab')[1];
+          if (tabMinhas) switchTabEnt(tabMinhas, 'minhas');
+        } else if (r.status === 409) {
+          const j = await r.json().catch(() => ({}));
+          showToast('Entrega já foi pega por outro entregador');
+          renderDisponiveis();
+        } else if (r.status === 403) {
+          showToast('Você já tem uma corrida ativa');
+        } else {
+          const j = await r.json().catch(() => ({}));
+          showToast('Erro: ' + (j.error || r.status));
+        }
+      } catch (err) { showToast('Erro de conexão'); }
+    }
+
     function switchTab(el, name) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       el.classList.add('active');
       document.getElementById('panel-' + name).classList.add('active');
+    }
+
+    // --- Mapa Leaflet ---
+    function initMap() {
+      if (map) { map.remove(); map = null; }
+      map = L.map('map', { zoomControl: true, attributionControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+      // Tile layer (dark mode friendly)
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const tileUrl = isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+
+      markersLayer = L.layerGroup().addTo(map);
+      zonesLayer = L.layerGroup().addTo(map);
+      routesLayer = L.layerGroup().addTo(map);
+
+      renderZonas();
+    }
+
+    function renderZonas() {
+      if (!zonesLayer) return;
+      zonesLayer.clearLayers();
+
+      ZONAS_PRECO.forEach(zona => {
+        const polygon = L.polygon(zona.coords, {
+          color: zona.cor,
+          weight: 2,
+          opacity: 0.8,
+          fillColor: zona.cor,
+          fillOpacity: 0.15,
+        });
+        polygon.bindTooltip(zona.nome + ' — ' + money(zona.preco), { permanent: false, direction: 'center' });
+        polygon.addTo(zonesLayer);
+      });
+    }
+
+    function extractLatLngFromUrl(url) {
+      if (!url) return null;
+      // @lat,lng
+      let m = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+      if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+      // q=lat,lng ou query=lat,lng
+      m = url.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+      if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+      // !3dlat!4dlng
+      m = url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+      if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+      // ll=lat,lng
+      m = url.match(/[?&#]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+      if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+      return null;
+    }
+
+    function renderMapMarkers() {
+      if (!map || !markersLayer) return;
+      markersLayer.clearLayers();
+      routesLayer.clearLayers();
+
+      // Ordens pendentes (laranja)
+      pendentes.forEach(o => {
+        const p = o.payload || {};
+        const coords = extractLatLngFromUrl(p.client_maps_url);
+        if (!coords) return;
+        const icon = L.divIcon({
+          className: '',
+          html: '<div class="order-marker">P</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        const m = L.marker(coords, { icon }).addTo(markersLayer);
+        const proto = o.protocolo || o.solicitacao_id;
+        m.bindPopup('<b>' + proto + '</b><br>' + (p.cliente_nome || '—') + '<br>' + money(o.taxa) + '<br><i>Pendente</i>');
+      });
+
+      // Ordens ativas (azul/verde) + rota
+      ativas.forEach(o => {
+        const p = o.payload || {};
+        const coords = extractLatLngFromUrl(p.client_maps_url);
+        if (!coords) return;
+        const isRota = o.status === 'EM_ROTA';
+        const icon = L.divIcon({
+          className: '',
+          html: '<div class="order-marker ' + (isRota ? 'assigned' : 'assigned') + '">R</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        const m = L.marker(coords, { icon }).addTo(markersLayer);
+        const proto = o.protocolo || o.solicitacao_id;
+        m.bindPopup('<b>' + proto + '</b><br>' + (p.cliente_nome || '—') + '<br>' + money(o.taxa) + '<br><i>' + o.status + '</i>');
+
+        // Se o entregador tem localização, desenha rota
+        const entregador = entregadores.find(d => d.id === o.entregador_id);
+        if (entregador && entregador.localizacao) {
+          const loc = entregador.localizacao;
+          if (loc.lat && loc.lng) {
+            // Marcador do entregador
+            const dIcon = L.divIcon({
+              className: '',
+              html: '<div class="driver-marker">' + (entregador.nome || 'E').charAt(0) + '</div>',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16],
+            });
+            L.marker([loc.lat, loc.lng], { icon: dIcon }).addTo(markersLayer)
+              .bindPopup('<b>' + (entregador.nome || 'Entregador') + '</b><br>Em rota');
+
+            // Linha de rota
+            L.polyline([[loc.lat, loc.lng], coords], {
+              color: '#00d4aa',
+              weight: 3,
+              opacity: 0.6,
+              dashArray: '8, 8',
+            }).addTo(routesLayer);
+          }
+        }
+      });
     }
 
     // --- Carregar dados (despachador) ---
@@ -322,13 +561,13 @@
         entregadores = j2.entregadores || [];
         ativas = j3.ordens || [];
         renderSidebar();
+        renderMapMarkers();
       } catch (err) {
         if (err.message !== 'nao_autenticado') showToast('Erro ao carregar dados');
       }
     }
 
     function renderSidebar() {
-      // Pendentes
       const readyEl = document.getElementById('readyList');
       if (!pendentes.length) { readyEl.innerHTML = '<div class="empty">Nenhuma ordem pendente</div>'; }
       else {
@@ -350,7 +589,6 @@
         }).join('');
       }
 
-      // Entregadores
       const driverEl = document.getElementById('driverList');
       if (!entregadores.length) { driverEl.innerHTML = '<div class="empty">Nenhum entregador cadastrado</div>'; }
       else {
@@ -370,7 +608,6 @@
         }).join('');
       }
 
-      // Corridas ativas
       const runEl = document.getElementById('runList');
       if (!ativas.length) { runEl.innerHTML = '<div class="empty">Nenhuma corrida ativa</div>'; }
       else {
@@ -431,56 +668,6 @@
       } catch (err) { showToast('Erro de conexão'); }
     }
 
-    // --- Mapa (canvas simples) ---
-    const canvas = document.getElementById('mapCanvas');
-    const ctx = canvas.getContext('2d');
-    let mapW = 0, mapH = 0;
-
-    function resizeCanvas() {
-      const wrap = canvas.parentElement;
-      canvas.width = wrap.clientWidth;
-      canvas.height = wrap.clientHeight;
-      mapW = canvas.width; mapH = canvas.height;
-    }
-
-    function initMap() {
-      resizeCanvas();
-      window.addEventListener('resize', resizeCanvas);
-      requestAnimationFrame(animateMap);
-    }
-
-    function animateMap() {
-      if (!mapW) { requestAnimationFrame(animateMap); return; }
-      ctx.fillStyle = '#0b1623';
-      ctx.fillRect(0, 0, mapW, mapH);
-      // Grid
-      ctx.strokeStyle = '#1e2d3d'; ctx.lineWidth = 1;
-      for (let x = 0; x < mapW; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, mapH); ctx.stroke(); }
-      for (let y = 0; y < mapH; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mapW, y); ctx.stroke(); }
-      // Pontos das ordens (posição simulada no canvas)
-      pendentes.forEach((o, i) => {
-        const x = 80 + (i * 120) % (mapW - 160);
-        const y = 80 + (i * 80) % (mapH - 160);
-        drawPoint(x, y, '#f4a261', o.protocolo || o.solicitacao_id, 'Pendente');
-      });
-      ativas.forEach((o, i) => {
-        const x = mapW * 0.6 + (i * 50) % 100;
-        const y = mapH * 0.4 + (i * 60) % 120;
-        drawPoint(x, y, '#00d4aa', o.protocolo || o.solicitacao_id, o.status);
-      });
-      requestAnimationFrame(animateMap);
-    }
-
-    function drawPoint(x, y, color, label, sub) {
-      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-      if (label) {
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Inter, sans-serif';
-        ctx.fillText(label, x + 14, y + 4);
-        if (sub) { ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; ctx.fillText(sub, x + 14, y + 16); }
-      }
-    }
-
     // --- Entregador view ---
     async function renderEntregadorView() {
       const container = document.getElementById('entregadorRun');
@@ -498,7 +685,7 @@
             <div class="card" style="background:var(--surface-2)">
               <div class="section-title">Minha localização</div>
               <p style="font-size:13px;color:var(--text-2)">Compartilhe sua localização para a central acompanhar.</p>
-              <button class="btn btn-info" style="margin-top:10px" onclick="enviarLocalizacao()">Enviar localização agora</button>
+              <button class="btn btn-info" style="margin-top:10px" onclick="iniciarGPS()">Ativar GPS</button>
             </div>
           `;
           return;
@@ -509,7 +696,6 @@
           const mapsUrl = p.client_maps_url || '';
           const proto = o.protocolo || o.solicitacao_id;
           const badgeClass = o.status === 'EM_ROTA' ? 'badge-assigned' : 'badge-pending';
-          const addr = [p.client_maps_url ? '' : '', o.solicitacao_id].join(' ');
           return `
             <div class="card" style="margin-bottom:10px">
               <div class="card-row">
@@ -537,8 +723,12 @@
           </div>
           <div style="padding:0 14px 14px">${corridasHtml}</div>
           <div class="card" style="margin:0 14px 14px;background:var(--surface-2)">
-            <div class="section-title">Minha localização</div>
-            <button class="btn btn-info" onclick="enviarLocalizacao()">Enviar localização agora</button>
+            <div class="section-title">GPS — Rastreamento</div>
+            <p style="font-size:13px;color:var(--text-2)">GPS ativo envia sua localização a cada 10s.</p>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn btn-info" style="flex:1" onclick="iniciarGPS()">Ativar GPS</button>
+              <button class="btn btn-warn" style="flex:1" onclick="pararGPS()">Desativar GPS</button>
+            </div>
           </div>
         `;
       } catch (err) {
@@ -562,17 +752,33 @@
       } catch (err) { showToast('Erro de conexão'); }
     }
 
-    async function enviarLocalizacao() {
-      if (!navigator.geolocation) { showToast('GPS não disponível'); return; }
-      navigator.geolocation.getCurrentPosition(async pos => {
+    // --- GPS do entregador ---
+    function iniciarGPS() {
+      if (!navigator.geolocation) { showToast('GPS não disponível neste dispositivo'); return; }
+      if (gpsWatchId !== null) { showToast('GPS já está ativo'); return; }
+      showToast('Ativando GPS...');
+      gpsWatchId = navigator.geolocation.watchPosition(async pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const precisao = pos.coords.accuracy;
         try {
           await api('/localizacao', {
             method: 'POST',
-            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy }),
+            body: JSON.stringify({ lat, lng, precisao }),
           });
-          showToast('Localização enviada');
-        } catch (err) { showToast('Erro ao enviar localização'); }
-      }, () => showToast('Não foi possível obter localização'), { enableHighAccuracy: true, timeout: 10000 });
+        } catch (err) { /* silencioso */ }
+      }, err => {
+        showToast('Erro GPS: ' + (err.message || 'permissão negada'));
+        gpsWatchId = null;
+      }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+    }
+
+    function pararGPS() {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        showToast('GPS desativado');
+      }
     }
 
     function openMaps(url) { window.open(url, '_blank'); }
@@ -581,7 +787,6 @@
     if ('serviceWorker' in navigator && location.protocol.includes('http')) {
       navigator.serviceWorker.register('/static/sw.js').catch(() => {});
     }
-    // Auto-login se tem token
     if (token) {
       api('/me').then(r => r.ok ? r.json() : null).then(j => {
         if (j && j.ok) { currentUser = j.usuario; showApp(); }
