@@ -7,7 +7,7 @@ from typing import Any
 from app.core.db import transaction
 from app.core.ids import new_uuid
 from app.repositories import carteiras, empresas, ordens
-from app.services import movimentacoes
+from app.services import movimentacoes, webhooks_enviados
 
 
 def criar(
@@ -70,17 +70,19 @@ def atualizar_status(
     status: str,
     entregador_id: int | None = None,
 ) -> dict[str, Any]:
-    campos: dict[str, Any] = {}
-    if status == "EM_ROTA":
-        campos["em_rota_em"] = "NOW()"
-    elif status == "ENTREGUE":
-        campos["entregue_em"] = "NOW()"
-    elif status == "CANCELADO":
-        campos["cancelado_em"] = "NOW()"
-
-    if entregador_id:
-        campos["entregador_id"] = entregador_id
-
     with transaction() as conn:
         ordens.update_status(conn, ordem_id, status, entregador_id=entregador_id)
-        return ordens.get(ordem_id) or {}
+
+    ordem = ordens.get(ordem_id) or {}
+
+    # Notifica Cardápio sobre mudança de status
+    if status in ("ATRIBUIDO", "EM_ROTA", "ENTREGUE"):
+        webhooks_enviados.enviar_status(
+            solicitacao_id=str(ordem.get("solicitacao_id") or ""),
+            status=status,
+            empresa_id=str(ordem.get("empresa_id") or ""),
+            ordem_uuid=ordem.get("uuid"),
+            protocolo=ordem.get("protocolo"),
+        )
+
+    return ordem
