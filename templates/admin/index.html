@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — REMO Central Logística</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --brand: #0a2540; --brand-2: #123a5e; --accent: #00d4aa; --accent-2: #00b894;
+      --warn: #f4a261; --danger: #e76f51; --info: #3a86ff;
+      --bg: #f6f8fb; --surface: #ffffff; --surface-2: #f1f5f9;
+      --text: #0f172a; --text-2: #475569; --text-3: #94a3b8;
+      --border: #e2e8f0; --shadow: 0 1px 3px rgba(0,0,0,.08); --shadow-lg: 0 10px 40px rgba(10,37,64,.12);
+      --radius: 14px; --radius-sm: 10px;
+      --sidebar-w: 240px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+    .hidden { display: none !important; }
+
+    /* Login */
+    .login { display: grid; place-items: center; min-height: 100vh; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+    .login-card { width: min(400px, 100%); background: var(--surface); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow-lg); }
+    .login-card h1 { font-weight: 900; font-size: 22px; margin-bottom: 4px; }
+    .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 5px; }
+    .form-group input, .form-group select { width: 100%; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+    .btn { border: 0; border-radius: var(--radius-sm); padding: 11px 18px; font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .15s; }
+    .btn-primary { background: var(--accent); color: #002c22; width: 100%; }
+    .btn-primary:hover { filter: brightness(1.05); }
+    .btn-sm { padding: 7px 14px; font-size: 13px; }
+    .btn-accent { background: var(--accent); color: #002c22; }
+    .btn-warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+    .btn-danger { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
+    .btn-info { background: #eff6ff; color: var(--info); border: 1px solid #bfdbfe; }
+    .btn-ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+
+    /* Layout */
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: var(--sidebar-w); background: var(--brand); color: #fff; flex-shrink: 0; display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .sidebar-header h2 { font-size: 18px; font-weight: 900; }
+    .sidebar-header p { font-size: 11px; opacity: .7; }
+    .nav { flex: 1; padding: 12px 0; }
+    .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; color: rgba(255,255,255,.7); cursor: pointer; font-weight: 600; font-size: 14px; transition: all .15s; border-left: 3px solid transparent; }
+    .nav-item:hover { background: rgba(255,255,255,.05); color: #fff; }
+    .nav-item.active { background: rgba(0,212,170,.1); color: var(--accent); border-left-color: var(--accent); }
+    .nav-icon { width: 20px; text-align: center; font-size: 16px; }
+    .sidebar-footer { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.1); font-size: 12px; opacity: .6; }
+
+    .main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; }
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .topbar h1 { font-size: 18px; font-weight: 900; }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .user-chip { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--brand-2); color: #fff; display: grid; place-items: center; font-weight: 900; font-size: 13px; }
+
+    .content { padding: 24px; flex: 1; }
+    .module { display: none; }
+    .module.active { display: block; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+    .card-title { font-weight: 800; font-size: 15px; margin-bottom: 12px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+    /* KPI cards */
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+    .kpi-label { font-size: 12px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; }
+    .kpi-value { font-size: 26px; font-weight: 900; margin-top: 6px; }
+    .kpi-sub { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+
+    /* Tabelas */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 10px 12px; font-weight: 800; color: var(--text-2); border-bottom: 2px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: var(--surface-2); }
+    .badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+    .badge-success { background: #e6fbf6; color: var(--accent-2); }
+    .badge-warn { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fef2f2; color: var(--danger); }
+    .badge-info { background: #e0f2fe; color: #0369a1; }
+    .badge-pending { background: #f1f5f9; color: var(--text-3); }
+
+    /* Filtros */
+    .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; }
+    .filter-group input, .filter-group select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--surface); color: var(--text); }
+
+    /* Mapa */
+    .map-container { position: relative; height: calc(100vh - 200px); min-height: 400px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    #map { width: 100%; height: 100%; }
+    .map-overlay { position: absolute; top: 14px; left: 14px; z-index: 500; background: rgba(10,37,64,.9); color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 13px; }
+    .map-legend { position: absolute; bottom: 14px; right: 14px; z-index: 500; background: rgba(10,37,64,.9); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 12px; }
+    .map-legend span { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot.pending { background: var(--warn); }
+    .dot.route { background: var(--info); }
+    .dot.done { background: #64748b; }
+    .dot.zone { background: rgba(0,212,170,.3); border: 1px solid var(--accent); }
+
+    .indicators { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 768px) { .indicators { grid-template-columns: repeat(2, 1fr); } }
+    .indicator { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+    .indicator-value { font-size: 24px; font-weight: 900; }
+    .indicator-label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; margin-top: 4px; }
+
+    /* Modal */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal-bg.open { display: flex; }
+    .modal { background: var(--surface); border-radius: var(--radius); width: min(500px, 100%); padding: 24px; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+    .modal h3 { font-weight: 900; margin-bottom: 16px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .modal-actions .btn { flex: 1; }
+
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(120px); z-index: 3000; background: var(--text); color: #fff; padding: 12px 22px; border-radius: 999px; font-weight: 700; font-size: 14px; opacity: 0; transition: all .3s; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .empty { text-align: center; padding: 40px; color: var(--text-3); }
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+    .tab { padding: 10px 18px; font-weight: 700; font-size: 13px; cursor: pointer; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .tab.active { color: var(--brand); border-bottom-color: var(--accent); }
+
+    .driver-marker { background: var(--info); border: 3px solid #fff; border-radius: 50%; width: 30px; height: 30px; display: grid; place-items: center; font-weight: 900; font-size: 11px; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+    .store-marker { background: var(--accent); border: 3px solid #fff; border-radius: 6px; width: 28px; height: 28px; display: grid; place-items: center; font-weight: 900; font-size: 11px; color: var(--brand); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+    .order-marker { background: var(--warn); border: 3px solid #fff; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-weight: 900; font-size: 10px; color: var(--brand); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+    .order-marker.assigned { background: var(--info); }
+    .order-marker.done { background: #64748b; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="login">
+  <div class="login-card">
+    <h1>REMO — Admin</h1>
+    <p>Painel administrativo da Central Logística</p>
+    <form onsubmit="doLogin(event)">
+      <div class="form-group">
+        <label>Usuário</label>
+        <input id="loginUser" type="text" required autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input id="loginPass" type="password" required autocomplete="current-password" />
+      </div>
+      <button class="btn btn-primary" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="layout hidden">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>REMO Admin</h2>
+      <p>Central Logística Do'Rafa</p>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" onclick="showModule('monitor', this)"><span class="nav-icon">🗺️</span> Monitoramento</div>
+      <div class="nav-item" onclick="showModule('financeiro', this)"><span class="nav-icon">💰</span> Financeiro</div>
+      <div class="nav-item" onclick="showModule('carteira', this)"><span class="nav-icon">💳</span> Carteira</div>
+      <div class="nav-item" onclick="showModule('relatorios', this)"><span class="nav-icon">📊</span> Relatórios</div>
+      <div class="nav-item" onclick="showModule('ordens', this)"><span class="nav-icon">📦</span> Ordens</div>
+      <div class="nav-item" onclick="showModule('areas', this)"><span class="nav-icon">📍</span> Áreas</div>
+      <div class="nav-item" onclick="showModule('entregadores', this)"><span class="nav-icon">🛵</span> Entregadores</div>
+    </nav>
+    <div class="sidebar-footer">v1.0 — Do'Rafa Tropical</div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <h1 id="moduleTitle">Monitoramento</h1>
+      <div class="topbar-right">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">A</div>
+          <span id="userName">Admin</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()">Sair</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- MÓDULO 1: MONITORAMENTO -->
+      <div class="module active" id="mod-monitor">
+        <div class="filters">
+          <div class="filter-group">
+            <label>Período</label>
+            <select id="monPeriodo" onchange="loadMonitor()">
+              <option value="6h">Últimas 6h</option>
+              <option value="24h">Últimas 24h</option>
+              <option value="7d">Últimos 7 dias</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadMonitor()">↻ Atualizar</button>
+        </div>
+        <div class="indicators">
+          <div class="indicator"><div class="indicator-value" id="indAgendadas">0</div><div class="indicator-label">Agendadas</div></div>
+          <div class="indicator"><div class="indicator-value" id="indProcurando">0</div><div class="indicator-label">Procurando</div></div>
+          <div class="indicator"><div class="indicator-value" id="indProgresso">0</div><div class="indicator-label">Em Progresso</div></div>
+          <div class="indicator"><div class="indicator-value" id="indEncerrados">0</div><div class="indicator-label">Encerrados</div></div>
+        </div>
+        <div class="map-container">
+          <div id="map"></div>
+          <div class="map-overlay">
+            <div style="font-weight:900">Tempo Real</div>
+            <div id="mapStats" style="opacity:.8;font-size:12px;margin-top:2px">—</div>
+          </div>
+          <div class="map-legend">
+            <span><i class="dot pending"></i> Pendente</span>
+            <span><i class="dot route"></i> Em rota</span>
+            <span><i class="dot done"></i> Entregue</span>
+            <span><i class="dot zone"></i> Zona</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 2: FINANCEIRO -->
+      <div class="module" id="mod-financeiro">
+        <div class="tabs">
+          <div class="tab active" onclick="switchFinTab(this, 'pagamentos')">Histórico de pagamentos</div>
+          <div class="tab" onclick="switchFinTab(this, 'fechamento')">Fechamento semanal</div>
+          <div class="tab" onclick="switchFinTab(this, 'notas')">Notas fiscais</div>
+        </div>
+        <div id="fin-pagamentos">
+          <div class="card">
+            <div class="card-title">Pagamentos recebidos (recargas PIX)</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Data</th><th>Empresa</th><th>Valor</th><th>Método</th><th>Status</th><th>TXID</th></tr></thead>
+                <tbody id="finTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="fin-fechamento" class="hidden">
+          <div class="card"><div class="empty">Fechamento semanal — em breve</div></div>
+        </div>
+        <div id="fin-notas" class="hidden">
+          <div class="card"><div class="empty">Notas fiscais — em breve</div></div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 3: CARTEIRA -->
+      <div class="module" id="mod-carteira">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Carteiras</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Empresa</th><th>Saldo</th><th>Status</th></tr></thead>
+                <tbody id="cartTable"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Extrato</div>
+            <div class="filters">
+              <div class="filter-group"><label>Carteira</label><select id="extCarteira"><option value="">Selecione...</option></select></div>
+              <div class="filter-group"><label>Status</label><select id="extStatus"><option value="">Todos</option><option>CONCLUIDO</option><option>PENDENTE</option></select></div>
+              <div class="filter-group"><label>Tipo</label><select id="extTipo"><option value="">Todos</option><option>CREDITO</option><option>DEBITO</option></select></div>
+              <button class="btn btn-ghost btn-sm" onclick="loadExtrato()">Buscar</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th>Saldo</th></tr></thead>
+                <tbody id="extTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 4: RELATÓRIOS -->
+      <div class="module" id="mod-relatorios">
+        <div class="filters">
+          <div class="filter-group">
+            <label>Período</label>
+            <select id="relPeriodo" onchange="loadRelatorios()">
+              <option value="mes">Este mês</option>
+              <option value="semana">Última semana</option>
+              <option value="24h">Últimas 24h</option>
+              <option value="6h">Últimas 6h</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-4" style="margin-bottom:16px">
+          <div class="kpi"><div class="kpi-label">Valor utilizado</div><div class="kpi-value" id="kpiValor">R$ 0,00</div></div>
+          <div class="kpi"><div class="kpi-label">Pedidos entregues</div><div class="kpi-value" id="kpiEntregues">0</div><div class="kpi-sub" id="kpiCancelados">0 cancelados</div></div>
+          <div class="kpi"><div class="kpi-label">Valor médio</div><div class="kpi-value" id="kpiMedia">R$ 0,00</div></div>
+          <div class="kpi"><div class="kpi-label">Tempo médio</div><div class="kpi-value" id="kpiTempo">0 min</div></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><div class="card-title">Por hora do dia</div><canvas id="chartHora" height="200"></canvas></div>
+          <div class="card"><div class="card-title">Por dia da semana</div><canvas id="chartDia" height="200"></canvas></div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 5: ORDENS -->
+      <div class="module" id="mod-ordens">
+        <div class="card">
+          <div class="card-title">Histórico de ordens</div>
+          <div class="filters">
+            <div class="filter-group"><label>ID da Ordem</label><input id="ordId" type="text" placeholder="123" /></div>
+            <div class="filter-group"><label>Código iFood</label><input id="ordIfood" type="text" placeholder="..." /></div>
+            <div class="filter-group"><label>ID Pedido</label><input id="ordSolic" type="text" placeholder="..." /></div>
+            <div class="filter-group"><label>Status</label><select id="ordStatus"><option value="">Todos</option><option>PENDENTE</option><option>ATRIBUIDO</option><option>EM_ROTA</option><option>ENTREGUE</option><option>CANCELADO</option></select></div>
+            <button class="btn btn-ghost btn-sm" onclick="loadOrdens()">Buscar</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Data</th><th>Protocolo</th><th>Status</th><th>Valor</th><th>Entregador</th><th>Pedido</th></tr></thead>
+              <tbody id="ordTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 6: ÁREAS -->
+      <div class="module" id="mod-areas">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-title" style="margin:0">Áreas de cobertura</div>
+            <button class="btn btn-accent btn-sm" onclick="openAreaModal()">+ Nova área</button>
+          </div>
+          <div class="filters">
+            <div class="filter-group"><label>Cidade</label><input id="areaCidade" type="text" placeholder="Vianópolis" onkeyup="loadAreas()" /></div>
+            <div class="filter-group"><label>Status</label><select id="areaStatus"><option value="ATIVO">Ativo</option><option value="INATIVO">Inativo</option><option value="TODOS">Todos</option></select></div>
+            <button class="btn btn-ghost btn-sm" onclick="loadAreas()">Buscar</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Cidade</th><th>Taxa</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="areaTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- MÓDULO 7: ENTREGADORES -->
+      <div class="module" id="mod-entregadores">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-title" style="margin:0">Entregadores cadastrados</div>
+            <button class="btn btn-accent btn-sm" onclick="openEntModal()">+ Novo entregador</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Username</th><th>Telefone</th><th>Corridas ativas</th><th>Total entregues</th><th>Comissão pendente</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="entTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Entregador -->
+<div class="modal-bg" id="entModal">
+  <div class="modal">
+    <h3 id="entModalTitle">Novo entregador</h3>
+    <input type="hidden" id="entId" />
+    <div class="form-group"><label>Nome</label><input id="entNome" type="text" /></div>
+    <div class="form-group"><label>Username</label><input id="entUsername" type="text" /></div>
+    <div class="form-group"><label>Senha</label><input id="entSenha" type="password" placeholder="Deixe vazio para não alterar" /></div>
+    <div class="form-group"><label>Telefone</label><input id="entTelefone" type="text" /></div>
+    <div class="form-group"><label>Empresa</label><select id="entEmpresa"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('entModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveEntregador()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Área -->
+<div class="modal-bg" id="areaModal">
+  <div class="modal">
+    <h3 id="areaModalTitle">Nova área</h3>
+    <input type="hidden" id="areaId" />
+    <div class="form-group"><label>Nome</label><input id="areaNome" type="text" placeholder="Centro" /></div>
+    <div class="form-group"><label>Cidade</label><input id="areaCidadeNome" type="text" placeholder="Vianópolis" /></div>
+    <div class="form-group"><label>Taxa de entrega (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
+    <div class="form-group"><label>Empresa</label><select id="areaEmpresa"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('areaModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveArea()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = '/api/admin';
+let token = sessionStorage.getItem('remo_admin_token') || '';
+let currentUser = null;
+let map = null, markersLayer = null, zonesLayer = null, routesLayer = null;
+let chartHora = null, chartDia = null;
+let empresasCache = [];
+
+function toast(msg) { const el = document.getElementById('toast'); el.textContent = msg; el.className = 'toast show'; setTimeout(() => el.classList.remove('show'), 3000); }
+function money(v) { return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) { doLogout(); throw new Error('nao_autenticado'); }
+  return r;
+}
+
+// LOGIN
+async function doLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('loginUser').value.trim();
+  const senha = document.getElementById('loginPass').value.trim();
+  try {
+    const r = await fetch(API + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, senha }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); return; }
+    const j = await r.json();
+    token = j.token; currentUser = j.usuario;
+    sessionStorage.setItem('remo_admin_token', token);
+    showApp();
+  } catch { toast('Erro de conexão'); }
+}
+
+function doLogout() {
+  token = ''; sessionStorage.removeItem('remo_admin_token'); currentUser = null;
+  document.getElementById('login').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+
+async function showApp() {
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userName').textContent = currentUser.nome || currentUser.username;
+  document.getElementById('userAvatar').textContent = (currentUser.nome || currentUser.username || 'A').charAt(0).toUpperCase();
+  await loadEmpresas();
+  initMap();
+  loadMonitor();
+}
+
+function showModule(name, el) {
+  document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('mod-' + name).classList.add('active');
+  el.classList.add('active');
+  const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores' };
+  document.getElementById('moduleTitle').textContent = titles[name] || name;
+  if (name === 'monitor') { setTimeout(() => map && map.invalidateSize(), 100); loadMonitor(); }
+  if (name === 'financeiro') loadFinanceiro();
+  if (name === 'carteira') loadCarteiras();
+  if (name === 'relatorios') loadRelatorios();
+  if (name === 'ordens') loadOrdens();
+  if (name === 'areas') loadAreas();
+  if (name === 'entregadores') loadEntregadores();
+}
+
+// MAPA
+function initMap() {
+  if (map) { map.remove(); map = null; }
+  map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.6869, -49.2648], 13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+  zonesLayer = L.layerGroup().addTo(map);
+  routesLayer = L.layerGroup().addTo(map);
+}
+
+function extractCoords(url) {
+  if (!url) return null;
+  let m = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  m = url.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  m = url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  return null;
+}
+
+async function loadMonitor() {
+  try {
+    const r = await api('/monitoramento');
+    const j = await r.json();
+    document.getElementById('indAgendadas').textContent = j.indicadores.agendadas;
+    document.getElementById('indProcurando').textContent = j.indicadores.procurando;
+    document.getElementById('indProgresso').textContent = j.indicadores.progresso;
+    document.getElementById('indEncerrados').textContent = j.indicadores.encerrados;
+    document.getElementById('mapStats').textContent = j.ordens.length + ' ordens • ' + j.entregadores.filter(e => e.localizacao).length + ' online';
+
+    markersLayer.clearLayers(); routesLayer.clearLayers();
+
+    // Marcadores de ordens
+    j.ordens.forEach(o => {
+      const coords = extractCoords((o.payload || {}).client_maps_url);
+      if (!coords) return;
+      const cls = o.status === 'ENTREGUE' ? 'done' : (o.status === 'PENDENTE' ? '' : 'assigned');
+      const icon = L.divIcon({ className: '', html: '<div class="order-marker ' + cls + '">' + o.status.charAt(0) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+      L.marker(coords, { icon }).addTo(markersLayer).bindPopup('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status);
+
+      // Rota: se entregador tem localização
+      if (o.entregador_id) {
+        const ent = j.entregadores.find(e => e.id === o.entregador_id);
+        if (ent && ent.localizacao) {
+          L.polyline([[ent.localizacao.lat, ent.localizacao.lng], coords], { color: '#3a86ff', weight: 3, opacity: .7, dashArray: '8,8' }).addTo(routesLayer);
+        }
+      }
+    });
+
+    // Marcadores de entregadores
+    j.entregadores.forEach(e => {
+      if (!e.localizacao) return;
+      const icon = L.divIcon({ className: '', html: '<div class="driver-marker">' + (e.nome || 'E').charAt(0) + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+      L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador');
+    });
+  } catch (err) { if (err.message !== 'nao_autenticado') toast('Erro ao carregar monitoramento'); }
+}
+
+// FINANCEIRO
+function switchFinTab(el, name) {
+  document.querySelectorAll('#mod-financeiro .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['pagamentos', 'fechamento', 'notas'].forEach(n => { document.getElementById('fin-' + n).classList.toggle('hidden', n !== name); });
+}
+
+async function loadFinanceiro() {
+  try {
+    const r = await api('/financeiro/pagamentos?limit=100');
+    const j = await r.json();
+    const tb = document.getElementById('finTable');
+    if (!j.pagamentos.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nenhum pagamento encontrado</td></tr>'; return; }
+    tb.innerHTML = j.pagamentos.map(p => `<tr><td>${fmtDate(p.criado_em)}</td><td>${p.empresa || '—'}</td><td>${money(p.valor)}</td><td>${p.metodo}</td><td><span class="badge ${p.status === 'PAGO' || p.status === 'CONFIRMADO' ? 'badge-success' : 'badge-pending'}">${p.status}</span></td><td style="font-size:11px;color:var(--text-3)">${p.pix_txid || '—'}</td></tr>`).join('');
+  } catch { toast('Erro ao carregar financeiro'); }
+}
+
+// CARTEIRA
+async function loadCarteiras() {
+  try {
+    const r = await api('/financeiro/carteiras');
+    const j = await r.json();
+    const tb = document.getElementById('cartTable');
+    const sel = document.getElementById('extCarteira');
+    sel.innerHTML = '<option value="">Selecione...</option>' + j.carteiras.map(c => `<option value="${c.id}">${c.empresa}</option>`).join('');
+    if (!j.carteiras.length) { tb.innerHTML = '<tr><td colspan="3" class="empty">Nenhuma carteira</td></tr>'; return; }
+    tb.innerHTML = j.carteiras.map(c => `<tr><td>${c.empresa}</td><td style="color:${c.saldo > 0 ? 'var(--accent-2)' : 'var(--danger)'};font-weight:900">${money(c.saldo)}</td><td><span class="badge ${c.ativo ? 'badge-success' : 'badge-pending'}">${c.ativo ? 'Ativa' : 'Inativa'}</span></td></tr>`).join('');
+  } catch { toast('Erro ao carregar carteiras'); }
+}
+
+async function loadExtrato() {
+  const cid = document.getElementById('extCarteira').value;
+  if (!cid) { toast('Selecione uma carteira'); return; }
+  const status = document.getElementById('extStatus').value;
+  const tipo = document.getElementById('extTipo').value;
+  try {
+    const r = await api(`/financeiro/extrato/${cid}?status=${status}&tipo=${tipo}&limit=100`);
+    const j = await r.json();
+    const tb = document.getElementById('extTable');
+    if (!j.extrato.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Nenhuma transação encontrada</td></tr>'; return; }
+    tb.innerHTML = j.extrato.map(e => `<tr><td>${fmtDate(e.criado_em)}</td><td>${e.tipo}</td><td>${e.descricao || '—'}</td><td style="color:${e.valor >= 0 ? 'var(--accent-2)' : 'var(--danger)'};font-weight:700">${money(e.valor)}</td><td>${money(e.saldo_final)}</td></tr>`).join('');
+  } catch { toast('Erro ao carregar extrato'); }
+}
+
+// RELATÓRIOS
+async function loadRelatorios() {
+  const periodo = document.getElementById('relPeriodo').value;
+  try {
+    const r = await api('/relatorios/kpis?periodo=' + periodo);
+    const j = await r.json();
+    document.getElementById('kpiValor').textContent = money(j.kpis.valor_utilizado);
+    document.getElementById('kpiEntregues').textContent = j.kpis.pedidos_entregues;
+    document.getElementById('kpiCancelados').textContent = j.kpis.pedidos_cancelados + ' cancelados';
+    document.getElementById('kpiMedia').textContent = money(j.kpis.valor_medio_pedido);
+    document.getElementById('kpiTempo').textContent = Math.round(j.kpis.tempo_medio_min) + ' min';
+
+    // Gráfico por hora
+    const horas = Array(24).fill(0);
+    Object.entries(j.graficos.por_hora).forEach(([h, v]) => { horas[parseInt(h)] = v; });
+    if (chartHora) chartHora.destroy();
+    chartHora = new Chart(document.getElementById('chartHora'), { type: 'bar', data: { labels: Array.from({ length: 24 }, (_, i) => i + 'h'), datasets: [{ data: horas, backgroundColor: '#00d4aa' }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+
+    // Gráfico por dia
+    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const diaData = Array(7).fill(0);
+    Object.entries(j.graficos.por_dia_semana).forEach(([d, v]) => { diaData[parseInt(d)] = v; });
+    if (chartDia) chartDia.destroy();
+    chartDia = new Chart(document.getElementById('chartDia'), { type: 'bar', data: { labels: dias, datasets: [{ data: diaData, backgroundColor: '#3a86ff' }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+  } catch { toast('Erro ao carregar relatórios'); }
+}
+
+// ORDENS
+async function loadOrdens() {
+  const params = new URLSearchParams();
+  const id = document.getElementById('ordId').value.trim();
+  const ifood = document.getElementById('ordIfood').value.trim();
+  const solic = document.getElementById('ordSolic').value.trim();
+  const status = document.getElementById('ordStatus').value;
+  if (id) params.set('id', id);
+  if (ifood) params.set('codigo_ifood', ifood);
+  if (solic) params.set('solicitacao_id', solic);
+  if (status) params.set('status', status);
+  try {
+    const r = await api('/ordens?' + params.toString());
+    const j = await r.json();
+    const tb = document.getElementById('ordTable');
+    if (!j.ordens.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nenhuma ordem encontrada</td></tr>'; return; }
+    tb.innerHTML = j.ordens.map(o => `<tr><td>${fmtDate(o.criado_em)}</td><td>${o.protocolo}</td><td><span class="badge ${o.status === 'ENTREGUE' ? 'badge-success' : o.status === 'CANCELADO' ? 'badge-danger' : 'badge-info'}">${o.status}</span></td><td>${money(o.taxa)}</td><td>${o.entregador || '—'}</td><td style="font-size:12px">${o.solicitacao_id}</td></tr>`).join('');
+  } catch { toast('Erro ao carregar ordens'); }
+}
+
+// ÁREAS
+async function loadAreas() {
+  const params = new URLSearchParams();
+  const cidade = document.getElementById('areaCidade').value.trim();
+  const status = document.getElementById('areaStatus').value;
+  if (cidade) params.set('cidade', cidade);
+  if (status) params.set('status', status);
+  try {
+    const r = await api('/areas?' + params.toString());
+    const j = await r.json();
+    const tb = document.getElementById('areaTable');
+    if (!j.areas.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Nenhuma área encontrada</td></tr>'; return; }
+    tb.innerHTML = j.areas.map(a => `<tr><td>${a.nome}</td><td>${a.cidade || '—'}</td><td style="font-weight:700">${money(a.taxa)}</td><td><span class="badge ${a.status === 'ATIVO' ? 'badge-success' : 'badge-pending'}">${a.status}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editArea(${a.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delArea(${a.id})">Desativar</button></td></tr>`).join('');
+  } catch { toast('Erro ao carregar áreas'); }
+}
+
+function openAreaModal() {
+  document.getElementById('areaId').value = '';
+  document.getElementById('areaModalTitle').textContent = 'Nova área';
+  document.getElementById('areaNome').value = '';
+  document.getElementById('areaCidadeNome').value = '';
+  document.getElementById('areaTaxa').value = '';
+  fillEmpresaSelect('areaEmpresa');
+  document.getElementById('areaModal').classList.add('open');
+}
+
+async function editArea(id) {
+  try {
+    const r = await api('/areas');
+    const j = await r.json();
+    const a = j.areas.find(x => x.id === id);
+    if (!a) return;
+    document.getElementById('areaId').value = a.id;
+    document.getElementById('areaModalTitle').textContent = 'Editar área';
+    document.getElementById('areaNome').value = a.nome;
+    document.getElementById('areaCidadeNome').value = a.cidade || '';
+    document.getElementById('areaTaxa').value = a.taxa;
+    fillEmpresaSelect('areaEmpresa', a.empresa_id);
+    document.getElementById('areaModal').classList.add('open');
+  } catch { toast('Erro'); }
+}
+
+async function saveArea() {
+  const id = document.getElementById('areaId').value;
+  const data = {
+    nome: document.getElementById('areaNome').value.trim(),
+    cidade: document.getElementById('areaCidadeNome').value.trim(),
+    taxa: parseFloat(document.getElementById('areaTaxa').value),
+    empresa_id: document.getElementById('areaEmpresa').value,
+  };
+  if (!data.nome || !data.empresa_id || isNaN(data.taxa)) { toast('Preencha nome, empresa e taxa'); return; }
+  try {
+    const r = id ? await api('/areas/' + id, { method: 'PUT', body: JSON.stringify(data) }) : await api('/areas', { method: 'POST', body: JSON.stringify(data) });
+    if (r.ok) { toast('Área salva'); closeModal('areaModal'); loadAreas(); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
+}
+
+async function delArea(id) {
+  if (!confirm('Desativar esta área?')) return;
+  try {
+    const r = await api('/areas/' + id, { method: 'DELETE' });
+    if (r.ok) { toast('Área desativada'); loadAreas(); }
+  } catch { toast('Erro'); }
+}
+
+// ENTREGADORES
+async function loadEntregadores() {
+  try {
+    const r = await api('/entregadores');
+    const j = await r.json();
+    const tb = document.getElementById('entTable');
+    if (!j.entregadores.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Nenhum entregador cadastrado</td></tr>'; return; }
+    tb.innerHTML = j.entregadores.map(e => `<tr><td>${e.nome}</td><td>${e.username}</td><td>${e.telefone || '—'}</td><td>${e.corridas_ativas}</td><td>${e.total_entregues}</td><td style="font-weight:700;color:var(--accent-2)">${money(e.comissao_pendente)}</td><td><span class="badge ${e.ativo ? 'badge-success' : 'badge-pending'}">${e.ativo ? 'Ativo' : 'Inativo'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editEnt(${e.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delEnt(${e.id})">Desativar</button></td></tr>`).join('');
+  } catch { toast('Erro ao carregar entregadores'); }
+}
+
+function openEntModal() {
+  document.getElementById('entId').value = '';
+  document.getElementById('entModalTitle').textContent = 'Novo entregador';
+  document.getElementById('entNome').value = '';
+  document.getElementById('entUsername').value = '';
+  document.getElementById('entSenha').value = '';
+  document.getElementById('entSenha').placeholder = 'Senha obrigatória';
+  document.getElementById('entTelefone').value = '';
+  fillEmpresaSelect('entEmpresa');
+  document.getElementById('entModal').classList.add('open');
+}
+
+async function editEnt(id) {
+  try {
+    const r = await api('/entregadores');
+    const j = await r.json();
+    const e = j.entregadores.find(x => x.id === id);
+    if (!e) return;
+    document.getElementById('entId').value = e.id;
+    document.getElementById('entModalTitle').textContent = 'Editar entregador';
+    document.getElementById('entNome').value = e.nome;
+    document.getElementById('entUsername').value = e.username;
+    document.getElementById('entSenha').value = '';
+    document.getElementById('entSenha').placeholder = 'Deixe vazio para não alterar';
+    document.getElementById('entTelefone').value = e.telefone || '';
+    fillEmpresaSelect('entEmpresa', e.empresa_id);
+    document.getElementById('entModal').classList.add('open');
+  } catch { toast('Erro'); }
+}
+
+async function saveEntregador() {
+  const id = document.getElementById('entId').value;
+  const nome = document.getElementById('entNome').value.trim();
+  const username = document.getElementById('entUsername').value.trim();
+  const senha = document.getElementById('entSenha').value;
+  const telefone = document.getElementById('entTelefone').value.trim();
+  const empresa_id = document.getElementById('entEmpresa').value;
+  if (!nome || !username) { toast('Nome e username obrigatórios'); return; }
+  if (!id && !senha) { toast('Senha obrigatória para novo entregador'); return; }
+  const data = { nome, username, telefone, empresa_id };
+  if (senha) data.senha = senha;
+  try {
+    const r = id ? await api('/entregadores/' + id, { method: 'PUT', body: JSON.stringify(data) }) : await api('/entregadores', { method: 'POST', body: JSON.stringify(data) });
+    if (r.ok) { toast('Entregador salvo'); closeModal('entModal'); loadEntregadores(); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
+}
+
+async function delEnt(id) {
+  if (!confirm('Desativar este entregador?')) return;
+  try {
+    const r = await api('/entregadores/' + id, { method: 'DELETE' });
+    if (r.ok) { toast('Entregador desativado'); loadEntregadores(); }
+  } catch { toast('Erro'); }
+}
+
+// UTIL
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function loadEmpresas() {
+  try {
+    const r = await api('/empresas');
+    const j = await r.json();
+    empresasCache = j.empresas || [];
+  } catch { empresasCache = []; }
+}
+
+function fillEmpresaSelect(selectId, selected) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">Selecione...</option>' + empresasCache.map(e => `<option value="${e.id}" ${e.id === selected ? 'selected' : ''}>${e.nome}</option>`).join('');
+}
+
+// INIT
+if (token) {
+  api('/me').then(r => r.ok ? r.json() : null).then(j => {
+    if (j && j.ok) { currentUser = j.usuario; showApp(); }
+    else doLogout();
+  }).catch(() => doLogout());
+}
+</script>
+</body>
+</html>

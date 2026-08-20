@@ -26,16 +26,22 @@ def create_app() -> Flask:
     ensure_schema()
 
     # Blueprints
-    from app.api import financeiro, frete, ordens, pwa
+    from app.api import admin, financeiro, frete, ordens, pwa
     app.register_blueprint(financeiro.bp, url_prefix="/api/v1")
     app.register_blueprint(ordens.bp, url_prefix="/api/v1")
     app.register_blueprint(frete.bp, url_prefix="/api/v1")
     app.register_blueprint(pwa.bp, url_prefix="/api/pwa")
+    app.register_blueprint(admin.bp, url_prefix="/api/admin")
 
-    # PWA — página principal
+    # PWA — página do entregador
     @app.route("/")
     def index_page():
         return render_template("index.html")
+
+    # Admin — painel administrativo
+    @app.route("/admin")
+    def admin_page():
+        return render_template("admin/index.html")
 
     @app.route("/health")
     def health():

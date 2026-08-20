@@ -1497,3 +1497,176 @@ A logo do projeto (DoRafa Tropical Brasil / REMO) deve estar em `static/assets/l
 - A princípio, o entregador não precisa de app nativo. PWA com geolocação é suficiente.
 - Para geolocalização em tempo real, usar WebSocket ou envio periódico de coordenadas (a cada 10-30s).
 - Para rotas, usar Google Maps ou OpenStreetMap (Leaflet + OSRM) com fallback manual.
+
+---
+
+## 24. Arquitetura de 3 perfis — interfaces separadas
+
+### 24.1 Decisão
+
+A REMO tem **3 perfis distintos**, cada um com interface própria:
+
+| Perfil | Acesso | URL | Interface | Função |
+|---|---|---|---|---|
+| **Cliente** (restaurante) | Web | `/portal` | Portal web responsivo | Recarregar crédito (PIX), ver histórico 24h, ver extrato |
+| **Entregador** | PWA (celular) | `/pwa` | PWA instalável | Receber push, reivindicar corridas, ver salário acumulado |
+| **Administrativo** | Web | `/admin` | Painel admin web | Controla tudo: mapa, financeiro, relatórios, áreas, entregadores |
+
+### 24.2 Princípios
+
+1. **Modularidade**: cada perfil é um módulo independente (blueprint Flask separado)
+2. **Separação de rotas**: `/portal/*`, `/pwa/*`, `/admin/*` — sem sobreposição
+3. **PWA só para entregador**: notificações push só funcionam em PWA instalada
+4. **Cliente e admin via web**: não precisam de PWA, são painéis web normais
+5. **Boas práticas**: cada módulo tem seu próprio template, CSS, JS e endpoints
+
+### 24.3 Portal do Cliente (`/portal`)
+
+**Blueprint**: `app.api.portal`
+
+**Funcionalidades:**
+- Login do cliente (empresa) com username/senha
+- Dashboard com saldo da carteira em destaque
+- Botão "Adicionar saldo" (gera PIX para recarga)
+- Histórico de ordens das últimas 24h
+- Extrato completo da carteira com filtros
+
+**Endpoints:**
+- `POST /api/portal/login`
+- `GET /api/portal/me`
+- `GET /api/portal/carteira`
+- `GET /api/portal/extrato`
+- `POST /api/portal/recarga` (gera PIX)
+- `GET /api/portal/ordens` (últimas 24h)
+
+### 24.4 PWA do Entregador (`/pwa`)
+
+**Blueprint**: `app.api.pwa` (refatorado — sem view de despachador)
+
+**Funcionalidades:**
+- Login do entregador
+- Aba "Disponíveis" — ordens para reivindicar
+- Aba "Minhas corridas" — corridas ativas
+- Aba "Meu salário" — comissões acumuladas (percentual da taxa)
+- GPS contínuo para rastreamento
+- Web Push para receber notificações de novas entregas
+
+**Comissão do entregador:**
+- Modelo: **percentual da taxa de frete** (ex: 70% da taxa)
+- Configurável por empresa em `empresas.config.comissao_entregador_pct`
+- Acumulado visível na aba "Meu salário"
+- Tabela `comissoes_entregador` rastreia cada comissão
+
+**Endpoints (manter + adicionar):**
+- `POST /api/pwa/login` (existente)
+- `GET /api/pwa/disponiveis` (existente)
+- `POST /api/pwa/ordens/<id>/reivindicar` (existente)
+- `GET /api/pwa/minhas-corridas` (existente)
+- `POST /api/pwa/ordens/<id>/status` (existente)
+- `POST /api/pwa/localizacao` (existente)
+- `GET /api/pwa/meu-salario` (novo — comissões acumuladas)
+- `POST /api/pwa/push/inscrever` (novo — Web Push)
+
+### 24.5 Painel Admin (`/admin`)
+
+**Blueprint**: `app.api.admin`
+
+**6 módulos:**
+
+#### Módulo 1: Monitoramento + Mapa
+- Mapa em modo escuro com Leaflet + tiles CartoDB Dark
+- Zonas de cobertura (polígonos verdes)
+- Marcadores: estabelecimento (loja) + entregadores (moto)
+- Linhas azuis conectando loja → entregador (rota ativa)
+- Indicadores: Agendadas, Procurando, Progresso, Encerrados
+- Filtro por período (últimas 6h, 24h, etc.)
+
+#### Módulo 2: Financeiro — Histórico de Pagamentos
+- Tabela de abastecimentos (recargas PIX)
+- Colunas: data, valor, método (PIX), status (Pago/Pendente)
+- Abas: Histórico de pagamentos, Fechamento semanal, Notas fiscais
+- Botão Exportar PDF
+
+#### Módulo 3: Carteira e Extrato
+- Saldo atual em destaque
+- Botão "Adicionar saldo"
+- Extrato com filtros: Status, Tipo de Transação, Tipo, Período
+- Tabela de movimentações
+
+#### Módulo 4: Relatórios e Métricas (KPIs)
+- Filtro de tempo (Este mês, Última semana, etc.)
+- Cards: Valor utilizado, Pedidos entregues, Pedidos cancelados, Valor médio do pedido, km percorridos, Tempo médio do pedido
+- Gráficos: Por hora do dia, Por dia da semana (Chart.js)
+
+#### Módulo 5: Histórico de Ordens
+- Filtros: ID da Ordem, Código do iFood, ID do Pedido
+- Tabela: data, nº pedidos, status, preço, entregador
+- Paginação
+
+#### Módulo 6: Áreas de Cobertura + Taxas
+- Filtro por cidade
+- Lista de áreas com: nome, taxa de entrega, status (Ativo/Inativo)
+- CRUD: criar, editar, desativar área
+- Polígono no mapa (desenhar ou coordenadas)
+
+#### Módulo extra: Cadastro de Entregadores
+- Lista de entregadores
+- Criar novo: nome, username, senha, telefone, empresa
+- Editar, desativar
+- Ver comissões acumuladas de cada um
+
+### 24.6 Schema novo
+
+#### `areas_cobertura`
+```sql
+CREATE TABLE IF NOT EXISTS areas_cobertura (
+    id BIGSERIAL PRIMARY KEY,
+    empresa_id TEXT NOT NULL REFERENCES empresas(id),
+    nome TEXT NOT NULL,
+    cidade TEXT,
+    taxa NUMERIC(12,2) NOT NULL,
+    poligono JSONB,  -- [[lat,lng], [lat,lng], ...]
+    status TEXT NOT NULL DEFAULT 'ATIVO',  -- ATIVO, INATIVO
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### `comissoes_entregador`
+```sql
+CREATE TABLE IF NOT EXISTS comissoes_entregador (
+    id BIGSERIAL PRIMARY KEY,
+    entregador_id BIGINT NOT NULL REFERENCES usuarios(id),
+    ordem_id BIGINT NOT NULL REFERENCES ordens_servico(id),
+    taxa_total NUMERIC(12,2) NOT NULL,
+    pct_comissao NUMERIC(5,2) NOT NULL,  -- ex: 70.00
+    valor_comissao NUMERIC(12,2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDENTE',  -- PENDENTE, PAGO
+    pago_em TIMESTAMPTZ,
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (ordem_id)  -- uma comissão por ordem
+);
+```
+
+### 24.7 Estrutura de pastas
+
+```
+app/
+  api/
+    portal.py      # /api/portal/*  — cliente
+    pwa.py         # /api/pwa/*     — entregador (refatorado)
+    admin.py       # /api/admin/*   — admin
+    ordens.py      # /api/v1/*      — integração Cardápio
+    financeiro.py  # /api/v1/*      — financeiro interno
+    frete.py       # /api/v1/*      — frete
+  templates/
+    portal/        # templates do portal do cliente
+    pwa/           # templates do PWA (index.html movido)
+    admin/         # templates do painel admin
+  static/
+    portal/        # CSS/JS do portal
+    pwa/           # CSS/JS/manifest/SW do PWA
+    admin/         # CSS/JS do admin
+```
+
+---
