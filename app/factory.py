@@ -22,6 +22,16 @@ def create_app() -> Flask:
     from app.api import financeiro
     app.register_blueprint(financeiro.bp, url_prefix="/api/v1")
 
+    @app.route("/")
+    def index():
+        return jsonify({
+            "ok": True,
+            "service": "Central Logística (REMO)",
+            "version": "0.1.0",
+            "health": "/health",
+            "api": "/api/v1",
+        })
+
     @app.route("/health")
     def health():
         return jsonify({"ok": True})
