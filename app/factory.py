@@ -19,9 +19,10 @@ def create_app() -> Flask:
     ensure_schema()
 
     # Blueprints
-    from app.api import financeiro, ordens
+    from app.api import financeiro, frete, ordens
     app.register_blueprint(financeiro.bp, url_prefix="/api/v1")
     app.register_blueprint(ordens.bp, url_prefix="/api/v1")
+    app.register_blueprint(frete.bp, url_prefix="/api/v1")
 
     @app.route("/")
     def index():

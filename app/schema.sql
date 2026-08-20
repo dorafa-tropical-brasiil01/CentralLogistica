@@ -162,3 +162,17 @@ CREATE INDEX IF NOT EXISTS idx_mov_tipo ON movimentacoes_carteira(tipo);
 CREATE INDEX IF NOT EXISTS idx_caixa_operacoes_caixa ON caixa_operacoes(caixa_id);
 CREATE INDEX IF NOT EXISTS idx_caixa_operacoes_tipo ON caixa_operacoes(tipo);
 CREATE INDEX IF NOT EXISTS idx_webhooks_recebidos_key ON webhooks_recebidos(idempotency_key);
+
+-- Configuração de frete independente por empresa
+CREATE TABLE IF NOT EXISTS frete_config (
+    id BIGSERIAL PRIMARY KEY,
+    empresa_id TEXT UNIQUE NOT NULL REFERENCES empresas(id),
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    origin_maps_url TEXT,
+    base NUMERIC(12,2) DEFAULT 0,
+    per_km NUMERIC(12,2) DEFAULT 0,
+    min_v NUMERIC(12,2),
+    max_v NUMERIC(12,2),
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em TIMESTAMPTZ DEFAULT NOW()
+);

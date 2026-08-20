@@ -31,19 +31,34 @@ def criar_ordem():
     empresa_id = str(data.get("empresa_id") or "").strip()
     solicitacao_id = str(data.get("solicitacao_id") or "").strip()
     try:
-        taxa = float(data.get("taxa") or 0)
+        taxa_cliente = float(data.get("taxa") or 0)
     except (TypeError, ValueError):
         return jsonify({"error": "taxa_invalida"}), 400
 
     if not empresa_id or not solicitacao_id:
         return jsonify({"error": "empresa_id e solicitacao_id obrigatorios"}), 400
 
+    # Coordenadas para cálculo independente de frete
+    origin_maps_url = str(data.get("origin_maps_url") or "").strip() or None
+    client_maps_url = str(data.get("client_maps_url") or "").strip() or None
+
+    # Se não vier coordenadas no top-level, tenta buscar no payload
+    payload = data.get("payload") or {}
+    if not isinstance(payload, dict):
+        payload = {}
+    if not origin_maps_url:
+        origin_maps_url = str(payload.get("origin_maps_url") or "").strip() or None
+    if not client_maps_url:
+        client_maps_url = str(payload.get("client_maps_url") or "").strip() or None
+
     try:
         ordem = ordens_service.criar(
             empresa_id=empresa_id,
             solicitacao_id=solicitacao_id,
-            taxa=taxa,
-            payload=data.get("payload"),
+            taxa_cliente=taxa_cliente,
+            origin_maps_url=origin_maps_url,
+            client_maps_url=client_maps_url,
+            payload=payload,
             idempotency_key=data.get("idempotency_key"),
         )
     except RuntimeError as e:
