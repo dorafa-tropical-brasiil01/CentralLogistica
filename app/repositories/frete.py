@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from app.core.db import connect
+from app.core.db import connect, transaction
 
 
 def get(empresa_id: str) -> dict[str, Any] | None:
@@ -40,7 +39,7 @@ def upsert(
     novo_min = min_v if min_v is not None else _to_float(atual.get("min_v"))
     novo_max = max_v if max_v is not None else _to_float(atual.get("max_v"))
 
-    with connect() as conn:
+    with transaction() as conn:
         cur = conn.cursor()
         cur.execute(
             """
@@ -59,7 +58,8 @@ def upsert(
             """,
             (empresa_id, novo_enabled, novo_origin, novo_base, novo_per_km, novo_min, novo_max),
         )
-        return dict(cur.fetchone())
+        row = cur.fetchone()
+        return dict(row) if row else {}
 
 
 def _to_float(v: Any) -> float | None:
