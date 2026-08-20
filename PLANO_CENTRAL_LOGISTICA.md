@@ -160,6 +160,115 @@ Cardápio envia entrega com taxa = R$ 8,00
 
 A REMO não precisa saber inicialmente como a taxa foi calculada. Ela recebe apenas o campo `taxa` e valida o saldo.
 
+> **Atualização (2026-08-20):** A REMO agora tem **seu próprio cálculo de frete independente**. Ver seção 21 abaixo.
+
+---
+
+## 21. Cálculo de frete independente da REMO
+
+### 21.1 Problema identificado
+
+Originalmente, a REMO apenas recebia a `taxa` calculada pelo Cardápio e debitava esse valor da carteira. Isso criava um buraco financeiro:
+
+```
+PDV configura "frete grátis" → Cardápio calcula taxa = 0 → KDS envia 0 → REMO debita 0
+```
+
+O entregador continua fazendo a entrega, mas a REMO não recebe nada.
+
+### 21.2 Solução: configuração independente
+
+A REMO agora tem **sua própria configuração de frete** por empresa, separada da configuração do Cardápio/PDV. O cálculo usa o mesmo mecanismo (haversine), mas com regras próprias.
+
+### 21.3 Dois conceitos separados
+
+| Conceito | Quem paga | Exemplo |
+|---|---|---|
+| **Taxa que o cliente paga** | Cliente → Restaurante | "Frete grátis" = cliente não paga |
+| **Custo da entrega** | Restaurante → REMO | O entregador precisa ser pago |
+
+### 21.4 Cenários
+
+| Situação | REMO cobra | Cliente paga | Resultado |
+|---|---|---|---|
+| Frete normal | R$ 8,00 | R$ 8,00 | Restaurante repassa |
+| Frete grátis (promo) | R$ 8,00 | R$ 0,00 | Restaurante absorve R$ 8,00 |
+| Frete com markup | R$ 8,00 | R$ 12,00 | Restaurante lucra R$ 4,00 |
+
+### 21.5 Implementação
+
+**Tabela `frete_config`:**
+
+```sql
+CREATE TABLE IF NOT EXISTS frete_config (
+    id BIGSERIAL PRIMARY KEY,
+    empresa_id TEXT UNIQUE NOT NULL REFERENCES empresas(id),
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    origin_maps_url TEXT,
+    base NUMERIC(12,2) DEFAULT 0,
+    per_km NUMERIC(12,2) DEFAULT 0,
+    min_v NUMERIC(12,2),
+    max_v NUMERIC(12,2),
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Endpoints:**
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/frete/<empresa_id>` | Obtém configuração atual |
+| `POST` | `/api/v1/frete/<empresa_id>` | Salva configuração |
+| `POST` | `/api/v1/frete/<empresa_id>/habilitar` | Habilita frete |
+| `POST` | `/api/v1/frete/<empresa_id>/desabilitar` | Desabilita frete |
+| `POST` | `/api/v1/frete/<empresa_id>/preview` | Calcula frete com base em coordenadas |
+
+**Fluxo de cálculo:**
+
+```
+1. PDV configura regras do cliente (Cardápio) e regras da REMO (separadas)
+2. Cliente faz pedido → Cardápio calcula frete do cliente
+3. KDS sinal_entregar → envia coordenadas + taxa_cliente para REMO
+4. REMO calcula frete real com SUAS regras (haversine)
+5. REMO debita frete real da carteira
+6. REMO registra: taxa_cliente (info) vs taxa_real (debitado)
+```
+
+**Fallback:** Se a REMO não tiver configuração de frete habilitada, usa a `taxa_cliente` enviada pelo Cardápio como fallback (compatibilidade retroativa).
+
+**Arquivos:**
+
+- `app/core/frete.py` — cálculo haversine (espelha Cardápio)
+- `app/repositories/frete.py` — repositório de configuração
+- `app/api/frete.py` — endpoints REST
+- `app/services/ordens.py` — integração do cálculo na criação de ordem
+
+**Payload enviado pelo Cardápio (atualizado):**
+
+```json
+{
+  "empresa_id": "empresa-teste-001",
+  "solicitacao_id": "PEDIDO-001",
+  "taxa": 8.0,
+  "origin_maps_url": "https://maps.google.com/?q=-16.7547,-48.5049",
+  "client_maps_url": "https://maps.google.com/?q=-16.8000,-48.5500",
+  "payload": {
+    "cliente_nome": "Ana Souza",
+    "cliente_whatsapp": "11988887777",
+    "tipo_entrega": "DELIVERY",
+    "taxa_cliente": 8.0,
+    "total": 68.5,
+    "origin_maps_url": "https://maps.google.com/?q=-16.7547,-48.5049",
+    "client_maps_url": "https://maps.google.com/?q=-16.8000,-48.5500"
+  }
+}
+```
+
+**Resposta da REMO (atualizada):**
+
+A ordem criada inclui `payload_json` com `taxa_cliente` e `taxa_real` para auditoria.
+
 ---
 
 ## 7. Controle de concorrência no consumo do saldo
