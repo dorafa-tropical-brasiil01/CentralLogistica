@@ -458,7 +458,7 @@
         </div>
         <input type="hidden" id="areaCor" value="#00d4aa" />
       </div>
-      <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa"></select></div>
+      <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa" onchange="carregarZonesExistentes()"></select></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-ghost btn-sm" onclick="buscarLocalMapa()">🔍 Buscar</button>
@@ -831,22 +831,32 @@ function initAreaMap() {
 }
 
 async function carregarZonesExistentes() {
+  if (!areaExistingLayer) return;
   const empresaId = document.getElementById('areaEmpresa').value;
-  if (!empresaId || !areaExistingLayer) return;
+  const editId = document.getElementById('areaId').value;
   try {
-    const r = await api('/areas?status=ATIVO&empresa_id=' + empresaId);
+    // Se tem empresa selecionada, filtra por ela; senão carrega todas
+    const url = empresaId
+      ? '/areas?status=ATIVO&empresa_id=' + encodeURIComponent(empresaId)
+      : '/areas?status=ATIVO';
+    const r = await api(url);
     const j = await r.json();
-    const editId = document.getElementById('areaId').value;
+    areaExistingLayer.clearLayers();
     for (const a of (j.areas || [])) {
       // Não mostra a zona sendo editada na camada de referência
       if (editId && a.id === parseInt(editId)) continue;
       if (!a.poligono || a.poligono.length < 3) continue;
       const cor = a.cor || '#00d4aa';
       const poly = L.polygon(a.poligono, {
-        color: cor, weight: 2, fillOpacity: 0.15, opacity: 0.6
+        color: cor, weight: 2, fillOpacity: 0.15, opacity: 0.7
       });
-      poly.bindTooltip(a.nome + ' — R$ ' + a.taxa.toFixed(2), { sticky: true });
+      poly.bindTooltip(a.nome + ' — R$ ' + Number(a.taxa).toFixed(2), { sticky: true });
       areaExistingLayer.addLayer(poly);
+    }
+    // Ajusta zoom para mostrar todas as zonas se houver
+    if (areaExistingLayer.getLayers().length > 0 && !areaPolygon) {
+      const bounds = areaExistingLayer.getBounds();
+      if (bounds.isValid()) areaMap.fitBounds(bounds, { padding: [40, 40] });
     }
   } catch (e) { /* silencioso */ }
 }
