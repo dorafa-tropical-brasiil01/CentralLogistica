@@ -16,6 +16,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def create_app() -> Flask:
+    # Configura logging para aparecer nos logs do Railway
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
     app = Flask(
         __name__,
         static_folder=str(BASE_DIR / "static"),

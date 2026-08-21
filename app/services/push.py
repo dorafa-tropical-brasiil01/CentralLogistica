@@ -106,8 +106,8 @@ def enviar_notificacao(
         "title": titulo,
         "body": corpo,
         "data": dados or {},
-        "icon": "/static/icon-192.png",
-        "badge": "/static/badge-72.png",
+        "icon": "/static/logo-remo.png",
+        "badge": "/static/logo-remo.png",
         "tag": "remo-ordem",
         "requireInteraction": True,
     })
@@ -119,6 +119,7 @@ def enviar_notificacao(
             "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
         }
         try:
+            logger.info("Enviando push para sub %s, endpoint=%s", sub["id"], sub["endpoint"][:50])
             webpush(
                 subscription_info=subscription_info,
                 data=payload,
@@ -126,13 +127,15 @@ def enviar_notificacao(
                 vapid_claims=_vapid_claims(),
             )
             enviadas += 1
+            logger.info("Push enviado com sucesso para sub %s", sub["id"])
         except WebPushException as e:
             logger.warning("Push falhou para sub %s: %s", sub["id"], e)
-            # 410 Gone ou 404 = inscrição expirou
-            if hasattr(e, "response") and e.response and e.response.status_code in (404, 410):
-                _remover_inscricao_invalida(sub["id"])
+            if hasattr(e, "response") and e.response:
+                logger.warning("Push response: %s %s", e.response.status_code, e.response.text[:200] if hasattr(e.response, 'text') else '')
+                if e.response.status_code in (404, 410):
+                    _remover_inscricao_invalida(sub["id"])
         except Exception as e:
-            logger.error("Erro ao enviar push para sub %s: %s", sub["id"], e)
+            logger.error("Erro ao enviar push para sub %s: %s (%s)", sub["id"], e, type(e).__name__)
 
     return enviadas
 

@@ -1264,14 +1264,17 @@ def admin_atribuir_ordem(ordem_id: int):
     # Notifica o entregador via push
     try:
         from app.services import push as push_service
-        push_service.enviar_notificacao(
+        enviadas = push_service.enviar_notificacao(
             usuario_id=entregador_id,
             titulo="Ordem atribuída a você!",
-            corpo=f"{result.get('protocolo', '')} — Taxa: R$ {float(result.get('taxa') or 0):.2f}".replace(".", ","),
+            corpo=f"{result.get('protocolo', '')} — abra o app para iniciar a rota",
             dados={"ordem_id": ordem_id, "acao": "ver"},
         )
-    except Exception:
-        pass  # push é best-effort
+        import logging as _log
+        _log.getLogger("admin").info("Push atribuir: enviadas=%s para usuario=%s", enviadas, entregador_id)
+    except Exception as e:
+        import logging as _log
+        _log.getLogger("admin").error("Push atribuir FALHOU: %s", e)
 
     return jsonify({
         "ok": True,
