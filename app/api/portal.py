@@ -287,10 +287,10 @@ def ordens():
     from datetime import datetime, timedelta
     limite = datetime.now() - timedelta(hours=horas)
 
-    where = ["empresa_id = %s", "criado_em > %s"]
+    where = ["o.empresa_id = %s", "o.criado_em > %s"]
     params: list[Any] = [empresa_id, limite.isoformat()]
     if status:
-        where.append("status = %s")
+        where.append("o.status = %s")
         params.append(status)
 
     with connect() as conn:
