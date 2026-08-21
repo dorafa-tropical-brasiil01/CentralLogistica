@@ -358,6 +358,27 @@
           <p style="font-size:13px;color:var(--text-2);margin-bottom:12px">Percentual da taxa de entrega que vai para o entregador. Padrão: 70%.</p>
           <div id="comissaoConfig" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"></div>
         </div>
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="card-title" style="margin:0">Comissões pendentes</div>
+            <div style="display:flex;gap:8px">
+              <select id="comFiltroEnt" onchange="loadComissoes()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);color:var(--text)">
+                <option value="">Todos entregadores</option>
+              </select>
+              <button class="btn btn-accent btn-sm" onclick="pagarTodasPendentes()">Pagar todas pendentes</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th><input type="checkbox" id="comSelectAll" onchange="toggleAllCom(this)" /></th><th>Entregador</th><th>Protocolo</th><th>Taxa</th><th>%</th><th>Comissão</th><th>Data</th><th>Status</th></tr></thead>
+              <tbody id="comTable"></tbody>
+            </table>
+          </div>
+          <div id="comFooter" style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <span id="comTotal" style="font-weight:800"></span>
+            <button class="btn btn-accent btn-sm" id="comPagarSel" onclick="pagarSelecionadas()" style="display:none">Pagar selecionadas</button>
+          </div>
+        </div>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <div class="card-title" style="margin:0">Entregadores cadastrados</div>
@@ -523,7 +544,7 @@ function showModule(name, el) {
   if (name === 'relatorios') loadRelatorios();
   if (name === 'ordens') loadOrdens();
   if (name === 'areas') loadAreas();
-  if (name === 'entregadores') loadEntregadores();
+  if (name === 'entregadores') { loadEntregadores(); loadComissoes(); }
   if (name === 'clientes') loadClientes();
 }
 
@@ -812,6 +833,88 @@ async function saveComissao(empresaId) {
     if (r.ok) { toast('Comissão atualizada para ' + val + '%'); }
     else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
   } catch { toast('Erro de conexão'); }
+}
+
+// COMISSOES — listar e pagar
+async function loadComissoes() {
+  const entFilter = document.getElementById('comFiltroEnt');
+  const entId = entFilter.value;
+  try {
+    const r = await api('/comissoes?status=PENDENTE' + (entId ? '&entregador_id=' + entId : ''));
+    const j = await r.json();
+    const tb = document.getElementById('comTable');
+    const comissoes = j.comissoes || [];
+    // Atualiza select de entregadores
+    if (!entFilter.dataset.loaded) {
+      const nomes = [...new Set(comissoes.map(c => c.entregador_id + ':' + c.entregador))];
+      entFilter.innerHTML = '<option value="">Todos entregadores</option>' + nomes.map(n => {
+        const [id, nome] = n.split(':');
+        return `<option value="${id}">${nome}</option>`;
+      }).join('');
+      entFilter.dataset.loaded = '1';
+    }
+    if (!comissoes.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="empty">Nenhuma comissão pendente</td></tr>';
+      document.getElementById('comTotal').textContent = '';
+      document.getElementById('comPagarSel').style.display = 'none';
+      return;
+    }
+    tb.innerHTML = comissoes.map(c => `<tr><td><input type="checkbox" class="comCheck" value="${c.id}" onchange="updateComFooter()" /></td><td>${c.entregador || '—'}</td><td style="font-size:12px">${c.protocolo || '—'}</td><td>${money(c.taxa_total)}</td><td>${c.pct}%</td><td style="font-weight:900;color:var(--accent-2)">${money(c.valor)}</td><td style="font-size:12px">${fmtDateShort(c.criado_em)}</td><td><span class="badge badge-pending">${c.status}</span></td></tr>`).join('');
+    updateComFooter();
+  } catch { toast('Erro ao carregar comissões'); }
+}
+
+function updateComFooter() {
+  const checks = document.querySelectorAll('.comCheck:checked');
+  const all = document.querySelectorAll('.comCheck');
+  const total = [...checks].reduce((s, c) => s + parseFloat(c.closest('tr').children[5].textContent.replace(/[^\d,]/g, '').replace(',', '.')), 0);
+  const totalGeral = [...all].reduce((s, c) => s + parseFloat(c.closest('tr').children[5].textContent.replace(/[^\d,]/g, '').replace(',', '.')), 0);
+  if (checks.length > 0) {
+    document.getElementById('comTotal').textContent = `${checks.length} selecionada(s) — ${money(total)} | Total pendente: ${money(totalGeral)}`;
+    document.getElementById('comPagarSel').style.display = 'inline-flex';
+    document.getElementById('comPagarSel').textContent = `Pagar ${checks.length} selecionada(s)`;
+  } else {
+    document.getElementById('comTotal').textContent = `${all.length} pendente(s) — Total: ${money(totalGeral)}`;
+    document.getElementById('comPagarSel').style.display = 'none';
+  }
+}
+
+function toggleAllCom(el) {
+  document.querySelectorAll('.comCheck').forEach(c => c.checked = el.checked);
+  updateComFooter();
+}
+
+async function pagarSelecionadas() {
+  const ids = [...document.querySelectorAll('.comCheck:checked')].map(c => parseInt(c.value));
+  if (!ids.length) return;
+  if (!confirm(`Pagar ${ids.length} comissão(ões) selecionada(s)?`)) return;
+  try {
+    const r = await api('/comissoes/pagar', { method: 'POST', body: JSON.stringify({ ids }) });
+    if (r.ok) { const j = await r.json(); toast(`${j.pagas} comissão(ões) pagas`); loadComissoes(); loadEntregadores(); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
+}
+
+async function pagarTodasPendentes() {
+  const entId = document.getElementById('comFiltroEnt').value;
+  const msg = entId ? 'Pagar TODAS comissões pendentes deste entregador?' : 'Pagar TODAS comissões pendentes de todos entregadores?';
+  if (!confirm(msg)) return;
+  try {
+    const body = entId ? { entregador_id: parseInt(entId) } : {};
+    // Se nao tem entregador_id, paga todas — mas o endpoint exige ids ou entregador_id
+    // Vamos pegar todos os IDs da tabela
+    const allIds = [...document.querySelectorAll('.comCheck')].map(c => parseInt(c.value));
+    if (!allIds.length) { toast('Nenhuma comissão pendente'); return; }
+    const r = await api('/comissoes/pagar', { method: 'POST', body: JSON.stringify({ ids: allIds }) });
+    if (r.ok) { const j = await r.json(); toast(`${j.pagas} comissão(ões) pagas`); loadComissoes(); loadEntregadores(); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
+}
+
+function fmtDateShort(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function openEntModal() {

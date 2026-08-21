@@ -1098,3 +1098,97 @@ def desativar_cliente(cliente_id: int):
             return _err("cliente_nao_encontrado", 404)
 
     return jsonify({"ok": True})
+
+
+# ============================================================
+# Comissões — pagar e listar pendentes
+# ============================================================
+
+@bp.get("/comissoes")
+def listar_comissoes():
+    """Lista comissões dos entregadores (filtro por status)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    status = request.args.get("status", "")
+    entregador_id = request.args.get("entregador_id")
+
+    where = ["1=1"]
+    params: list[Any] = []
+    if status:
+        where.append("c.status = %s")
+        params.append(status.upper())
+    if entregador_id:
+        where.append("c.entregador_id = %s")
+        params.append(int(entregador_id))
+
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT c.id, c.entregador_id, c.ordem_id, c.taxa_total,
+                   c.pct_comissao, c.valor_comissao, c.status,
+                   c.criado_em, c.pago_em,
+                   u.nome as entregador_nome,
+                   o.protocolo, o.solicitacao_id
+            FROM comissoes_entregador c
+            LEFT JOIN usuarios u ON u.id = c.entregador_id
+            LEFT JOIN ordens_servico o ON o.id = c.ordem_id
+            WHERE {' AND '.join(where)}
+            ORDER BY c.criado_em DESC
+            LIMIT 500
+        """, params)
+        items = []
+        for r in (dict(x) for x in cur.fetchall()):
+            items.append({
+                "id": r["id"],
+                "entregador_id": r.get("entregador_id"),
+                "entregador": r.get("entregador_nome"),
+                "ordem_id": r.get("ordem_id"),
+                "protocolo": r.get("protocolo"),
+                "taxa_total": float(r["taxa_total"] or 0),
+                "pct": float(r["pct_comissao"] or 0),
+                "valor": float(r["valor_comissao"] or 0),
+                "status": r.get("status"),
+                "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
+                "pago_em": r["pago_em"].isoformat() if r.get("pago_em") else None,
+            })
+    return jsonify({"ok": True, "comissoes": items})
+
+
+@bp.post("/comissoes/pagar")
+def pagar_comissoes():
+    """Marca comissões como PAGAS (lote)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    ids = data.get("ids") or []
+    entregador_id = data.get("entregador_id")
+
+    if not ids and not entregador_id:
+        return _err("ids ou entregador_id obrigatorio", 400)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        if ids:
+            id_list = [int(i) for i in ids]
+            cur.execute(
+                """UPDATE comissoes_entregador
+                   SET status = 'PAGO', pago_em = NOW()
+                   WHERE id = ANY(%s) AND status = 'PENDENTE'
+                   RETURNING id""",
+                (id_list,),
+            )
+        else:
+            cur.execute(
+                """UPDATE comissoes_entregador
+                   SET status = 'PAGO', pago_em = NOW()
+                   WHERE entregador_id = %s AND status = 'PENDENTE'
+                   RETURNING id""",
+                (int(entregador_id),),
+            )
+        pagas = cur.rowcount
+
+    return jsonify({"ok": True, "pagas": pagas})
