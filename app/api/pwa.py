@@ -382,6 +382,80 @@ def meu_salario():
     })
 
 
+# --- Entregador: Web Push (VAPID) ---
+
+@bp.get("/push/vapid-public-key")
+def push_vapid_public_key():
+    """Retorna a chave pública VAPID para o browser inscrever."""
+    from app.core import config as cfg
+    if not cfg.VAPID_PUBLIC_KEY:
+        return jsonify({"error": "push_desabilitado"}), 503
+    return jsonify({"ok": True, "public_key": cfg.VAPID_PUBLIC_KEY})
+
+
+@bp.post("/push/inscrever")
+def push_inscrever():
+    """Inscreve o entregador para receber push notifications."""
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    data = request.get_json(silent=True) or {}
+    sub = data.get("subscription") or {}
+    endpoint = str(sub.get("endpoint") or "").strip()
+    keys = sub.get("keys") or {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+
+    if not endpoint or not p256dh or not auth:
+        return jsonify({"error": "dados_incompletos"}), 400
+
+    from app.services import push as push_service
+    sub_id = push_service.inscrever(
+        usuario_id=user["usuario_id"],
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth,
+    )
+    return jsonify({"ok": True, "subscription_id": sub_id})
+
+
+@bp.post("/push/desinscrever")
+def push_desinscrever():
+    """Remove inscrição push."""
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    data = request.get_json(silent=True) or {}
+    endpoint = str(data.get("endpoint") or "").strip()
+    if not endpoint:
+        return jsonify({"error": "endpoint_obrigatorio"}), 400
+
+    from app.services import push as push_service
+    push_service.desinscrever(endpoint=endpoint)
+    return jsonify({"ok": True})
+
+
+@bp.post("/push/teste")
+def push_teste():
+    """Envia uma notificação de teste para o usuário logado."""
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    from app.services import push as push_service
+    enviadas = push_service.enviar_notificacao(
+        usuario_id=user["usuario_id"],
+        titulo="REMO — Notificação de teste",
+        corpo="Push funcionando! Você será avisado de novas entregas.",
+        dados={"tipo": "teste"},
+    )
+    if enviadas == 0:
+        return jsonify({"ok": False, "error": "sem_inscricoes_ou_push_desabilitado"}), 404
+    return jsonify({"ok": True, "enviadas": enviadas})
+
+
 # --- Helpers ---
 
 def _serializar_ordem(o: dict) -> dict:

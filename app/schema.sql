@@ -220,8 +220,10 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     id BIGSERIAL PRIMARY KEY,
     usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
     endpoint TEXT NOT NULL,
-    keys_json JSONB NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
     ativo BOOLEAN DEFAULT TRUE,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_subscriptions(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);

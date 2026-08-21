@@ -20,4 +20,25 @@ def ensure_schema() -> None:
     with transaction() as conn:
         cur = conn.cursor()
         cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        # Migração: push_subscriptions — adicionar colunas p256dh/auth se não existirem
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'push_subscriptions' AND column_name = 'p256dh'
+        """)
+        if not cur.fetchone():
+            cur.execute("""
+                ALTER TABLE push_subscriptions
+                ADD COLUMN IF NOT EXISTS p256dh TEXT,
+                ADD COLUMN IF NOT EXISTS auth TEXT
+            """)
+            # Migra dados de keys_json se existir
+            cur.execute("""
+                UPDATE push_subscriptions
+                SET p256dh = COALESCE(keys_json->>'p256dh', ''),
+                    auth = COALESCE(keys_json->>'auth', '')
+                WHERE keys_json IS NOT NULL AND p256dh IS NULL
+            """)
+            logger.info("Migração push_subscriptions: colunas p256dh/auth adicionadas")
+
         logger.info("Schema aplicado com sucesso")

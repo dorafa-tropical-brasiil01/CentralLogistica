@@ -32,6 +32,10 @@ PIX_TOKEN = env("PIX_TOKEN", "")
 PIX_WEBHOOK_SECRET = env("PIX_WEBHOOK_SECRET", "")
 PIX_SANDBOX = env("PIX_SANDBOX", "1").lower() in ("1", "true", "yes", "y", "on")
 
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = env("VAPID_SUBJECT", "mailto:contato@dorafatropicalbrasil.com.br")
+
 
 def is_pix_online_enabled() -> bool:
     return env_bool("REMO_PIX_ONLINE_ENABLED", True)

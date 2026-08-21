@@ -66,6 +66,17 @@ def criar_ordem():
             return jsonify({"error": "saldo_insuficiente"}), 402
         return jsonify({"error": str(e)}), 400
 
+    # Notifica entregadores via Web Push
+    try:
+        from app.services import push as push_service
+        push_service.notificar_entregadores_disponiveis(
+            ordem_id=ordem.get("id"),
+            protocolo=ordem.get("protocolo", ""),
+            taxa=float(ordem.get("taxa") or 0),
+        )
+    except Exception:
+        pass  # Push é best-effort
+
     return jsonify(ordem), 201
 
 
