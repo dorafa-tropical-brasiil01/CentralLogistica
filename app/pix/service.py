@@ -18,7 +18,7 @@ def build_adapter():
         return PagBankAdapter(
             token=config.PIX_TOKEN,
             webhook_token=config.PIX_WEBHOOK_SECRET or None,
-            sandbox=config.PIX_PROVIDER == "sandbox",
+            sandbox=config.PIX_SANDBOX,
         )
     return MockAdapter()
 

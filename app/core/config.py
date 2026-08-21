@@ -30,6 +30,7 @@ PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", "")
 PIX_PROVIDER = env("PIX_PROVIDER", "mock").lower()
 PIX_TOKEN = env("PIX_TOKEN", "")
 PIX_WEBHOOK_SECRET = env("PIX_WEBHOOK_SECRET", "")
+PIX_SANDBOX = env("PIX_SANDBOX", "1").lower() in ("1", "true", "yes", "y", "on")
 
 
 def is_pix_online_enabled() -> bool:
