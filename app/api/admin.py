@@ -1283,3 +1283,74 @@ def admin_atribuir_ordem(ordem_id: int):
             "taxa": float(result.get("taxa") or 0),
         },
     })
+
+
+# ------------------------------------------------------------------
+# DEBUG: estado do push (inscrições por entregador)
+# ------------------------------------------------------------------
+
+@bp.get("/push/debug")
+def admin_push_debug():
+    """Retorna estado das inscrições push para debug."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    from app.core import config as cfg
+    vapid_configurado = bool(cfg.VAPID_PUBLIC_KEY and cfg.VAPID_PRIVATE_KEY)
+
+    with connect() as conn:
+        cur = conn.cursor()
+        # Lista entregadores com suas inscrições push
+        cur.execute("""
+            SELECT u.id, u.nome, u.username, u.ativo,
+                   COUNT(ps.id) as total_subs,
+                   MAX(ps.id) as ultima_sub_id
+            FROM usuarios u
+            LEFT JOIN push_subscriptions ps ON ps.usuario_id = u.id
+            WHERE u.perfil = 'ENTREGADOR'
+            GROUP BY u.id, u.nome, u.username, u.ativo
+            ORDER BY u.nome
+        """)
+        entregadores = []
+        for r in (dict(x) for x in cur.fetchall()):
+            entregadores.append({
+                "id": r["id"],
+                "nome": r.get("nome"),
+                "username": r.get("username"),
+                "ativo": r.get("ativo"),
+                "total_inscricoes": r.get("total_subs", 0),
+                "tem_inscricao": (r.get("total_subs", 0) or 0) > 0,
+            })
+
+    return jsonify({
+        "ok": True,
+        "vapid_configurado": vapid_configurado,
+        "vapid_public_key_prefix": (cfg.VAPID_PUBLIC_KEY or "")[:20] + "..." if cfg.VAPID_PUBLIC_KEY else None,
+        "entregadores": entregadores,
+    })
+
+
+@bp.post("/push/teste/<int:entregador_id>")
+def admin_push_teste_entregador(entregador_id: int):
+    """Admin envia push de teste para um entregador específico."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    from app.services import push as push_service
+
+    if not push_service.is_enabled():
+        return _err("push_desabilitado_vapid_nao_configurado", 503)
+
+    enviadas = push_service.enviar_notificacao(
+        usuario_id=entregador_id,
+        titulo="REMO — Notificação de teste (admin)",
+        corpo="Esta é uma notificação de teste enviada pelo administrador.",
+        dados={"tipo": "teste_admin"},
+    )
+
+    if enviadas == 0:
+        return _err("sem_inscricoes_validas", 404)
+
+    return jsonify({"ok": True, "enviadas": enviadas})

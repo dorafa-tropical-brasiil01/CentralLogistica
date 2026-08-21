@@ -405,6 +405,19 @@
             </table>
           </div>
         </div>
+        <div class="card" style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="card-title" style="margin:0">Notificações Push (Web Push)</div>
+            <button class="btn btn-ghost btn-sm" onclick="loadPushDebug()">↻ Atualizar</button>
+          </div>
+          <div id="pushDebugInfo" style="margin-bottom:12px;font-size:13px;color:var(--text-2)"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Ativo</th><th>Inscrito</th><th>Ações</th></tr></thead>
+              <tbody id="pushTable"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- MÓDULO 8: CLIENTES -->
@@ -612,7 +625,7 @@ function showModule(name, el) {
   if (name === 'relatorios') loadRelatorios();
   if (name === 'ordens') loadOrdens();
   if (name === 'areas') loadAreas();
-  if (name === 'entregadores') { loadEntregadores(); loadComissoes(); }
+  if (name === 'entregadores') { loadEntregadores(); loadComissoes(); loadPushDebug(); }
   if (name === 'clientes') loadClientes();
 }
 
@@ -1366,6 +1379,49 @@ async function delArea(id) {
 }
 
 // ENTREGADORES
+// PUSH DEBUG
+async function loadPushDebug() {
+  const info = document.getElementById('pushDebugInfo');
+  const tb = document.getElementById('pushTable');
+  if (info) info.textContent = 'Carregando...';
+  try {
+    const r = await api('/push/debug');
+    const j = await r.json();
+    if (info) {
+      const vapid = j.vapid_configurado ? '✅ Configurado' : '❌ Não configurado';
+      info.innerHTML = `VAPID: ${vapid} • Chave pública: <code>${j.vapid_public_key_prefix || '—'}</code>`;
+    }
+    if (tb) {
+      if (!j.entregadores.length) {
+        tb.innerHTML = '<tr><td colspan="4" class="empty">Nenhum entregador</td></tr>';
+      } else {
+        tb.innerHTML = j.entregadores.map(e => {
+          const inscrito = e.tem_inscricao
+            ? '<span class="badge badge-success">Sim</span>'
+            : '<span class="badge badge-danger">Não</span>';
+          const testeBtn = e.tem_inscricao
+            ? `<button class="btn btn-ghost btn-sm" onclick="testarPush(${e.id})">🔔 Testar</button>`
+            : '—';
+          return `<tr><td>${e.nome || e.username}</td><td>${e.ativo ? 'Sim' : 'Não'}</td><td>${inscrito}</td><td>${testeBtn}</td></tr>`;
+        }).join('');
+      }
+    }
+  } catch { if (info) info.textContent = 'Erro ao carregar'; }
+}
+
+async function testarPush(entregadorId) {
+  try {
+    const r = await api(`/push/teste/${entregadorId}`, { method: 'POST' });
+    if (r.ok) {
+      const j = await r.json();
+      toast(`Push enviado! ${j.enviadas} notificação(ões)`);
+    } else {
+      const j = await r.json().catch(() => ({}));
+      toast('Erro: ' + (j.error || r.status));
+    }
+  } catch { toast('Erro de conexão'); }
+}
+
 async function loadEntregadores() {
   loadComissaoConfig();
   try {
