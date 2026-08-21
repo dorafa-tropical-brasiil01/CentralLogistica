@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from app.core import config
 from app.repositories import frete as frete_repo
+from app.repositories import areas as areas_repo
 
 bp = Blueprint("frete", __name__)
 
@@ -101,3 +102,27 @@ def preview(empresa_id: str):
         return jsonify({"ok": False, "enabled": bool(cfg.get("enabled")), "reason": "nao_calculado"})
 
     return jsonify({"ok": True, "enabled": True, "fee": calc["fee"], "distance_km": calc["distance_km"]})
+
+
+@bp.get("/zonas")
+def listar_zonas():
+    """Lista zonas de cobertura ativas (para importação no Cardápio/PDV)."""
+    if not _autorizar():
+        return jsonify({"error": "nao_autorizado"}), 401
+
+    cidade = str(request.args.get("cidade") or "").strip()
+    if cidade:
+        zonas = areas_repo.listar_ativas_por_cidade(cidade=cidade)
+    else:
+        zonas = areas_repo.listar_todas_ativas()
+    out = []
+    for z in zonas:
+        out.append({
+            "id": z.get("id"),
+            "nome": z.get("nome"),
+            "cidade": z.get("cidade"),
+            "taxa": float(z.get("taxa") or 0),
+            "poligono": z.get("poligono"),
+            "cor": z.get("cor") or "#00d4aa",
+        })
+    return jsonify({"ok": True, "zonas": out})
