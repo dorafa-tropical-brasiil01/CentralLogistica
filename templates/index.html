@@ -852,6 +852,41 @@
           pushSubscription = existing;
           btn.textContent = '🔔 Notificações ativas';
           btn.classList.add('active');
+          // Re-sincroniza com backend (caso tenha expirado lá)
+          try {
+            await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: existing }) });
+          } catch {}
+        } else {
+          // Tenta inscrever automaticamente se já tem permissão
+          if (Notification.permission === 'granted') {
+            try {
+              const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(j.public_key),
+              });
+              pushSubscription = sub;
+              await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
+              btn.textContent = '🔔 Notificações ativas';
+              btn.classList.add('active');
+            } catch {}
+          } else if (Notification.permission === 'default') {
+            // Pede permissão automaticamente no primeiro login
+            try {
+              const permission = await Notification.requestPermission();
+              if (permission === 'granted') {
+                const sub = await reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: urlBase64ToUint8Array(j.public_key),
+                });
+                pushSubscription = sub;
+                await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
+                btn.textContent = '🔔 Notificações ativas';
+                btn.classList.add('active');
+                showToast('Notificações ativadas!');
+                setTimeout(() => api('/push/teste', { method: 'POST' }), 500);
+              }
+            } catch {}
+          }
         }
       } catch { btn.style.display = 'none'; }
     }
