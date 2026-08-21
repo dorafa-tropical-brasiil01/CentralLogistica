@@ -41,4 +41,13 @@ def ensure_schema() -> None:
             """)
             logger.info("Migração push_subscriptions: colunas p256dh/auth adicionadas")
 
+        # Migração: areas_cobertura — adicionar coluna cor se não existir
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'areas_cobertura' AND column_name = 'cor'
+        """)
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE areas_cobertura ADD COLUMN IF NOT EXISTS cor TEXT DEFAULT '#00d4aa'")
+            logger.info("Migração areas_cobertura: coluna cor adicionada")
+
         logger.info("Schema aplicado com sucesso")

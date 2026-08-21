@@ -92,6 +92,11 @@
     .badge-info { background: #e0f2fe; color: #0369a1; }
     .badge-pending { background: #f1f5f9; color: var(--text-3); }
 
+    /* Botões de cor (seletor de zona) */
+    .cor-btn { width: 28px; height: 28px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform .15s, border-color .15s; }
+    .cor-btn:hover { transform: scale(1.15); }
+    .cor-btn.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+
     /* Filtros */
     .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
     .filter-group { display: flex; flex-direction: column; gap: 4px; }
@@ -344,7 +349,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nome</th><th>Cidade</th><th>Taxa</th><th>Status</th><th>Ações</th></tr></thead>
+              <thead><tr><th>Cor</th><th>Nome</th><th>Cidade</th><th>Taxa</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody id="areaTable"></tbody>
             </table>
           </div>
@@ -433,12 +438,26 @@
 <div class="modal-bg" id="areaModal">
   <div class="modal" style="width:min(900px, 96vw); max-height:92vh">
     <h3 id="areaModalTitle">Nova área de cobertura</h3>
-    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Busque por bairro/setor, importe os limites automaticamente ou desenhe a zona manualmente no mapa.</p>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Busque por bairro/setor, importe os limites automaticamente ou desenhe a zona manualmente. As zonas já salvas aparecem no mapa para referência.</p>
     <input type="hidden" id="areaId" />
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1.2fr 1.4fr 0.8fr 0.8fr 1fr;gap:10px;margin-bottom:12px;align-items:end">
       <div class="form-group" style="margin:0"><label>Nome da zona</label><input id="areaNome" type="text" placeholder="Setor Centro" /></div>
       <div class="form-group" style="margin:0"><label>Bairro / Cidade</label><input id="areaCidadeNome" type="text" placeholder="Setor Centro, Goiânia" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarLocalMapa()}" /></div>
       <div class="form-group" style="margin:0"><label>Taxa (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
+      <div class="form-group" style="margin:0">
+        <label>Cor da zona</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="areaCorPicker">
+          <button type="button" class="cor-btn" data-cor="#00d4aa" style="background:#00d4aa" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#3b82f6" style="background:#3b82f6" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#ef4444" style="background:#ef4444" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#f59e0b" style="background:#f59e0b" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#8b5cf6" style="background:#8b5cf6" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#ec4899" style="background:#ec4899" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#10b981" style="background:#10b981" onclick="selecionarCor(this)"></button>
+          <button type="button" class="cor-btn" data-cor="#6366f1" style="background:#6366f1" onclick="selecionarCor(this)"></button>
+        </div>
+        <input type="hidden" id="areaCor" value="#00d4aa" />
+      </div>
       <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa"></select></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
@@ -752,19 +771,32 @@ async function loadAreas() {
     const r = await api('/areas?' + params.toString());
     const j = await r.json();
     const tb = document.getElementById('areaTable');
-    if (!j.areas.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Nenhuma área encontrada</td></tr>'; return; }
-    tb.innerHTML = j.areas.map(a => `<tr><td>${a.nome}</td><td>${a.cidade || '—'}</td><td style="font-weight:700">${money(a.taxa)}</td><td><span class="badge ${a.status === 'ATIVO' ? 'badge-success' : 'badge-pending'}">${a.status}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editArea(${a.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delArea(${a.id})">Desativar</button></td></tr>`).join('');
+    if (!j.areas.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nenhuma área encontrada</td></tr>'; return; }
+    tb.innerHTML = j.areas.map(a => `<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:6px;background:${a.cor || '#00d4aa'};border:1px solid rgba(0,0,0,.1)"></span></td><td>${a.nome}</td><td>${a.cidade || '—'}</td><td style="font-weight:700">${money(a.taxa)}</td><td><span class="badge ${a.status === 'ATIVO' ? 'badge-success' : 'badge-pending'}">${a.status}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editArea(${a.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delArea(${a.id})">Desativar</button></td></tr>`).join('');
   } catch { toast('Erro ao carregar áreas'); }
 }
 
 // --- Mapa de área (desenho próprio + importação Nominatim) ---
 let areaMap = null;
 let areaDrawnLayer = null;
+let areaExistingLayer = null;  // camada com zonas já salvas
 let areaPolygon = null;
 let areaMarkers = [];
 let areaDrawPoints = [];
 let areaDrawing = false;
 let areaMapClickHandler = null;
+let areaCorAtual = '#00d4aa';
+
+function selecionarCor(btn) {
+  document.querySelectorAll('.cor-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  areaCorAtual = btn.dataset.cor;
+  document.getElementById('areaCor').value = areaCorAtual;
+  // Atualiza cor do polígono sendo desenhado
+  if (areaPolygon) {
+    areaPolygon.setStyle({ color: areaCorAtual });
+  }
+}
 
 function initAreaMap() {
   if (areaMap) { areaMap.remove(); areaMap = null; }
@@ -773,6 +805,11 @@ function initAreaMap() {
     attribution: 'OpenStreetMap', maxZoom: 19
   }).addTo(areaMap);
 
+  // Camada para zonas já salvas (referência)
+  areaExistingLayer = new L.FeatureGroup();
+  areaMap.addLayer(areaExistingLayer);
+
+  // Camada para desenho atual
   areaDrawnLayer = new L.FeatureGroup();
   areaMap.addLayer(areaDrawnLayer);
 
@@ -790,7 +827,28 @@ function initAreaMap() {
     fecharPoligono();
   });
 
-  setTimeout(() => areaMap.invalidateSize(), 200);
+  setTimeout(() => { areaMap.invalidateSize(); carregarZonesExistentes(); }, 200);
+}
+
+async function carregarZonesExistentes() {
+  const empresaId = document.getElementById('areaEmpresa').value;
+  if (!empresaId || !areaExistingLayer) return;
+  try {
+    const r = await api('/areas?status=ATIVO&empresa_id=' + empresaId);
+    const j = await r.json();
+    const editId = document.getElementById('areaId').value;
+    for (const a of (j.areas || [])) {
+      // Não mostra a zona sendo editada na camada de referência
+      if (editId && a.id === parseInt(editId)) continue;
+      if (!a.poligono || a.poligono.length < 3) continue;
+      const cor = a.cor || '#00d4aa';
+      const poly = L.polygon(a.poligono, {
+        color: cor, weight: 2, fillOpacity: 0.15, opacity: 0.6
+      });
+      poly.bindTooltip(a.nome + ' — R$ ' + a.taxa.toFixed(2), { sticky: true });
+      areaExistingLayer.addLayer(poly);
+    }
+  } catch (e) { /* silencioso */ }
 }
 
 function addDrawPoint(latlng) {
@@ -841,7 +899,7 @@ function fecharPoligono() {
   // Cria o polígono final
   areaDrawnLayer.clearLayers();
   const coords = areaDrawPoints.map(p => [p.lat, p.lng]);
-  const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+  const poly = L.polygon(coords, { color: areaCorAtual, weight: 3, fillOpacity: 0.2 });
   areaDrawnLayer.addLayer(poly);
   areaPolygon = poly;
   areaDrawPoints = [];
@@ -978,7 +1036,7 @@ function importarBairro() {
 
       // Desenha no mapa
       areaDrawnLayer.clearLayers();
-      const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+      const poly = L.polygon(coords, { color: areaCorAtual, weight: 3, fillOpacity: 0.2 });
       areaDrawnLayer.addLayer(poly);
       areaPolygon = poly;
       areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
@@ -1028,7 +1086,7 @@ function getPolygonCoords() {
 function renderPolygonOnMap(coords) {
   if (!areaMap || !coords || !coords.length) return;
   areaDrawnLayer.clearLayers();
-  const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+  const poly = L.polygon(coords, { color: areaCorAtual, weight: 3, fillOpacity: 0.2 });
   areaDrawnLayer.addLayer(poly);
   areaPolygon = poly;
   areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
@@ -1046,6 +1104,8 @@ function openAreaModal() {
   areaDrawPoints = [];
   areaMarkers = [];
   areaDrawing = false;
+  // Cor padrão: primeira cor selecionada
+  selecionarCor(document.querySelector('.cor-btn'));
   document.getElementById('areaVertCount').textContent = '';
   const dica = document.getElementById('areaDica');
   if (dica) dica.style.display = 'none';
@@ -1065,6 +1125,13 @@ async function editArea(id) {
     document.getElementById('areaCidadeNome').value = a.cidade || '';
     document.getElementById('areaTaxa').value = a.taxa;
     fillEmpresaSelect('areaEmpresa', a.empresa_id);
+    // Seleciona a cor da zona
+    const cor = a.cor || '#00d4aa';
+    areaCorAtual = cor;
+    document.getElementById('areaCor').value = cor;
+    document.querySelectorAll('.cor-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.cor === cor);
+    });
     document.getElementById('areaModal').classList.add('open');
     setTimeout(() => {
       initAreaMap();
@@ -1091,6 +1158,7 @@ async function saveArea() {
     cidade: document.getElementById('areaCidadeNome').value.trim(),
     taxa: parseFloat(document.getElementById('areaTaxa').value),
     empresa_id: document.getElementById('areaEmpresa').value,
+    cor: document.getElementById('areaCor').value || '#00d4aa',
   };
   if (!data.nome || !data.empresa_id || isNaN(data.taxa)) { toast('Preencha nome, empresa e taxa'); return; }
   const coords = getPolygonCoords();

@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS areas_cobertura (
     cidade TEXT,
     taxa NUMERIC(12,2) NOT NULL,
     poligono JSONB,  -- [[lat,lng], [lat,lng], ...]
+    cor TEXT DEFAULT '#00d4aa',  -- cor do poligono no mapa
     status TEXT NOT NULL DEFAULT 'ATIVO',  -- ATIVO, INATIVO
     criado_em TIMESTAMPTZ DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ DEFAULT NOW()

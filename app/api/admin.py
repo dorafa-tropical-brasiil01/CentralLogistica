@@ -612,7 +612,7 @@ def listar_areas():
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT id, empresa_id, nome, cidade, taxa, poligono, status,
+            SELECT id, empresa_id, nome, cidade, taxa, poligono, cor, status,
                    criado_em, atualizado_em
             FROM areas_cobertura
             {where_clause}
@@ -633,6 +633,7 @@ def listar_areas():
                 "cidade": r.get("cidade"),
                 "taxa": float(r["taxa"] or 0),
                 "poligono": poligono,
+                "cor": r.get("cor") or "#00d4aa",
                 "status": r.get("status"),
                 "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
             })
@@ -656,6 +657,7 @@ def criar_area():
     cidade = str(data.get("cidade") or "").strip()
     taxa = data.get("taxa")
     poligono = data.get("poligono")
+    cor = str(data.get("cor") or "#00d4aa").strip() or "#00d4aa"
 
     if not empresa_id or not nome or taxa is None:
         return _err("empresa_id, nome e taxa sao obrigatorios", 400)
@@ -664,12 +666,12 @@ def criar_area():
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO areas_cobertura (empresa_id, nome, cidade, taxa, poligono, status)
-            VALUES (%s, %s, %s, %s, %s, 'ATIVO')
+            INSERT INTO areas_cobertura (empresa_id, nome, cidade, taxa, poligono, cor, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'ATIVO')
             RETURNING *
             """,
             (empresa_id, nome, cidade or None, float(taxa),
-             psycopg2.extras.Json(poligono) if poligono else None),
+             psycopg2.extras.Json(poligono) if poligono else None, cor),
         )
         area = dict(cur.fetchone())
 
@@ -678,6 +680,7 @@ def criar_area():
         "nome": area["nome"],
         "cidade": area.get("cidade"),
         "taxa": float(area["taxa"]),
+        "cor": area.get("cor") or "#00d4aa",
         "status": area.get("status"),
     }})
 
@@ -691,7 +694,7 @@ def atualizar_area(area_id: int):
 
     data = request.get_json(silent=True) or {}
     campos = {}
-    for k in ("nome", "cidade", "taxa", "status", "poligono"):
+    for k in ("nome", "cidade", "taxa", "status", "poligono", "cor"):
         if k in data:
             campos[k] = data[k]
 
