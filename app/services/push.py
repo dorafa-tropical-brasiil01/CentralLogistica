@@ -22,6 +22,7 @@ def _vapid_claims() -> dict[str, str]:
 
 def inscrever(*, usuario_id: int, endpoint: str, p256dh: str, auth: str) -> int:
     """Inscreve (ou atualiza) uma inscrição push para o usuário."""
+    logger.info("inscrever: usuario_id=%s endpoint=%s", usuario_id, endpoint[:60])
     with transaction() as conn:
         cur = conn.cursor()
         # Remove inscrições antigas do mesmo endpoint
@@ -53,7 +54,9 @@ def inscrever(*, usuario_id: int, endpoint: str, p256dh: str, auth: str) -> int:
                 (usuario_id, endpoint, p256dh, auth),
             )
         row = cur.fetchone()
-        return row["id"] if row else 0
+        sub_id = row["id"] if row else 0
+        logger.info("inscrever: OK sub_id=%s para usuario_id=%s", sub_id, usuario_id)
+        return sub_id
 
 
 def desinscrever(*, endpoint: str) -> bool:

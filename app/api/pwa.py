@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, session
@@ -446,17 +447,28 @@ def push_inscrever():
     p256dh = str(keys.get("p256dh") or "").strip()
     auth = str(keys.get("auth") or "").strip()
 
-    if not endpoint or not p256dh or not auth:
-        return jsonify({"error": "dados_incompletos"}), 400
+    logging.info("push/inscrever: user=%s endpoint=%s p256dh_len=%s auth_len=%s",
+                 user.get("usuario_id"), endpoint[:60], len(p256dh), len(auth))
 
-    from app.services import push as push_service
-    sub_id = push_service.inscrever(
-        usuario_id=user["usuario_id"],
-        endpoint=endpoint,
-        p256dh=p256dh,
-        auth=auth,
-    )
-    return jsonify({"ok": True, "subscription_id": sub_id})
+    if not endpoint or not p256dh or not auth:
+        logging.warning("push/inscrever: dados incompletos — endpoint=%s p256dh=%s auth=%s",
+                         bool(endpoint), bool(p256dh), bool(auth))
+        return jsonify({"error": "dados_incompletos",
+                        "detail": f"endpoint={bool(endpoint)} p256dh={bool(p256dh)} auth={bool(auth)}"}), 400
+
+    try:
+        from app.services import push as push_service
+        sub_id = push_service.inscrever(
+            usuario_id=user["usuario_id"],
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+        )
+        logging.info("push/inscrever: OK sub_id=%s para user=%s", sub_id, user.get("usuario_id"))
+        return jsonify({"ok": True, "subscription_id": sub_id})
+    except Exception as e:
+        logging.exception("push/inscrever: ERRO ao salvar: %s", e)
+        return jsonify({"error": "erro_interno", "detail": str(e)}), 500
 
 
 @bp.post("/push/desinscrever")
