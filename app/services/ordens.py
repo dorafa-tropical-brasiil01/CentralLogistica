@@ -101,8 +101,31 @@ def _calcular_frete_real(
 ) -> float | None:
     """Calcula o frete real usando a configuração da REMO.
 
+    Prioridade:
+    1. Zona de cobertura (polígono) — se o endereço cai em uma zona, usa a taxa da zona
+    2. Haversine (distância) — fallback se houver config de frete
+
     Retorna None se não houver configuração ou não for possível calcular.
     """
+    client_url = str(client_maps_url or "").strip()
+
+    # 1. Tenta calcular por zona de cobertura
+    if client_url:
+        from app.repositories import areas as areas_repo
+        areas = areas_repo.listar_ativas_por_empresa(empresa_id)
+        if areas:
+            zone_calc = frete_calc.compute_fee_by_zone(
+                client_maps_url=client_url,
+                areas=areas,
+            )
+            if zone_calc:
+                logger.info(
+                    "frete por zona empresa=%s zona=%s fee=%.2f",
+                    empresa_id, zone_calc.get("zone"), zone_calc["fee"],
+                )
+                return float(zone_calc["fee"])
+
+    # 2. Fallback: haversine
     cfg = frete_repo.get(empresa_id)
     if not cfg:
         logger.info("frete_config nao encontrada para empresa %s", empresa_id)
@@ -113,9 +136,8 @@ def _calcular_frete_real(
         return None
 
     origin = str(cfg.get("origin_maps_url") or origin_maps_url or "").strip()
-    client = str(client_maps_url or "").strip()
-    if not origin or not client:
-        logger.info("coordenadas insuficientes: origin=%s client=%s", bool(origin), bool(client))
+    if not origin or not client_url:
+        logger.info("coordenadas insuficientes: origin=%s client=%s", bool(origin), bool(client_url))
         return None
 
     config_dict = {
@@ -130,7 +152,7 @@ def _calcular_frete_real(
     calc = frete_calc.compute_fee(
         config=config_dict,
         origin_maps_url=origin,
-        client_maps_url=client,
+        client_maps_url=client_url,
     )
     if not calc:
         logger.info("calculo de frete retornou None para empresa %s", empresa_id)

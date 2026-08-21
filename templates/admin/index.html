@@ -6,6 +6,7 @@
   <title>Admin — REMO Central Logística</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.draw@1.0.4/dist/leaflet.draw.css" />
   <script src="https://unpkg.com/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -429,18 +430,28 @@
   </div>
 </div>
 
-<!-- MODAL: Área -->
+<!-- MODAL: Área (com mapa) -->
 <div class="modal-bg" id="areaModal">
-  <div class="modal">
-    <h3 id="areaModalTitle">Nova área</h3>
+  <div class="modal" style="width:min(900px, 96vw); max-height:92vh">
+    <h3 id="areaModalTitle">Nova área de cobertura</h3>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Digite a cidade para centralizar o mapa, depois desenhe o polígono da zona de entrega clicando no mapa. Atribua a taxa para essa zona.</p>
     <input type="hidden" id="areaId" />
-    <div class="form-group"><label>Nome</label><input id="areaNome" type="text" placeholder="Centro" /></div>
-    <div class="form-group"><label>Cidade</label><input id="areaCidadeNome" type="text" placeholder="Vianópolis" /></div>
-    <div class="form-group"><label>Taxa de entrega (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
-    <div class="form-group"><label>Empresa</label><select id="areaEmpresa"></select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-group" style="margin:0"><label>Nome da zona</label><input id="areaNome" type="text" placeholder="Centro" /></div>
+      <div class="form-group" style="margin:0"><label>Cidade</label><input id="areaCidadeNome" type="text" placeholder="Goiânia" onblur="buscarCidadeMapa()" /></div>
+      <div class="form-group" style="margin:0"><label>Taxa (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
+      <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa"></select></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="buscarCidadeMapa()">🔍 Buscar cidade</button>
+      <button class="btn btn-ghost btn-sm" onclick="iniciarDesenho()">✏️ Desenhar zona</button>
+      <button class="btn btn-ghost btn-sm" onclick="limparDesenho()">🗑️ Limpar desenho</button>
+      <span id="areaVertCount" style="font-size:12px;color:var(--text-3);align-self:center"></span>
+    </div>
+    <div id="areaMap" style="width:100%;height:380px;border-radius:12px;border:1px solid var(--border);margin-bottom:14px"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('areaModal')">Cancelar</button>
-      <button class="btn btn-accent" onclick="saveArea()">Salvar</button>
+      <button class="btn btn-ghost" onclick="closeAreaModal()">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveArea()">Salvar zona</button>
     </div>
   </div>
 </div>
@@ -480,6 +491,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.draw@1.0.4/dist/leaflet.draw.js"></script>
 <script>
 const API = '/api/admin';
 let token = sessionStorage.getItem('remo_admin_token') || '';
@@ -745,14 +757,113 @@ async function loadAreas() {
   } catch { toast('Erro ao carregar áreas'); }
 }
 
+// --- Mapa de área (Leaflet.draw) ---
+let areaMap = null;
+let areaDrawControl = null;
+let areaDrawnLayer = null;
+let areaPolygon = null;
+
+function initAreaMap() {
+  if (areaMap) { areaMap.remove(); areaMap = null; }
+  areaMap = L.map('areaMap').setView([-16.6869, -49.2648], 12); // Goiânia padrão
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'OpenStreetMap', maxZoom: 19
+  }).addTo(areaMap);
+
+  // Camada para desenho
+  areaDrawnLayer = new L.FeatureGroup();
+  areaMap.addLayer(areaDrawnLayer);
+
+  // Controle de desenho (apenas polígono)
+  areaDrawControl = new L.Control.Draw({
+    edit: { featureGroup: areaDrawnLayer, edit: false, remove: true },
+    draw: {
+      polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#00d4aa', weight: 3 } },
+      rectangle: false, circle: false, marker: false, circlemarker: false, polyline: false
+    }
+  });
+  areaMap.addControl(areaDrawControl);
+
+  areaMap.on(L.Draw.Event.CREATED, function(e) {
+    areaDrawnLayer.clearLayers();
+    areaDrawnLayer.addLayer(e.layer);
+    areaPolygon = e.layer;
+    const latlngs = e.layer.getLatLngs()[0];
+    document.getElementById('areaVertCount').textContent = `${latlngs.length} pontos definidos`;
+  });
+
+  areaMap.on(L.Draw.Event.EDITED, function(e) {
+    e.layers.eachLayer(l => { areaPolygon = l; });
+  });
+
+  areaMap.on(L.Draw.Event.DELETED, function() {
+    areaPolygon = null;
+    document.getElementById('areaVertCount').textContent = '';
+  });
+
+  setTimeout(() => areaMap.invalidateSize(), 200);
+}
+
+function buscarCidadeMapa() {
+  const cidade = document.getElementById('areaCidadeNome').value.trim();
+  if (!cidade) { toast('Digite uma cidade'); return; }
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(cidade + ', Brasil') + '&limit=1')
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.length > 0) {
+        const r = data[0];
+        areaMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
+        toast('Mapa centralizado em ' + cidade);
+      } else {
+        toast('Cidade não encontrada');
+      }
+    })
+    .catch(() => toast('Erro ao buscar cidade'));
+}
+
+function iniciarDesenho() {
+  if (!areaMap) return;
+  const handler = new L.Draw.Polygon(areaMap, {
+    allowIntersection: false, showArea: true,
+    shapeOptions: { color: '#00d4aa', weight: 3, fillOpacity: 0.2 }
+  });
+  handler.enable();
+  toast('Clique no mapa para desenhar a zona. Clique no primeiro ponto para fechar.');
+}
+
+function limparDesenho() {
+  if (areaDrawnLayer) areaDrawnLayer.clearLayers();
+  areaPolygon = null;
+  document.getElementById('areaVertCount').textContent = '';
+}
+
+function getPolygonCoords() {
+  if (!areaPolygon) return null;
+  const latlngs = areaPolygon.getLatLngs()[0];
+  return latlngs.map(p => [p.lat, p.lng]);
+}
+
+function renderPolygonOnMap(coords) {
+  if (!areaMap || !coords || !coords.length) return;
+  areaDrawnLayer.clearLayers();
+  const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+  areaDrawnLayer.addLayer(poly);
+  areaPolygon = poly;
+  areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
+  document.getElementById('areaVertCount').textContent = `${coords.length} pontos definidos`;
+}
+
 function openAreaModal() {
   document.getElementById('areaId').value = '';
-  document.getElementById('areaModalTitle').textContent = 'Nova área';
+  document.getElementById('areaModalTitle').textContent = 'Nova área de cobertura';
   document.getElementById('areaNome').value = '';
   document.getElementById('areaCidadeNome').value = '';
   document.getElementById('areaTaxa').value = '';
   fillEmpresaSelect('areaEmpresa');
+  areaPolygon = null;
+  document.getElementById('areaVertCount').textContent = '';
   document.getElementById('areaModal').classList.add('open');
+  setTimeout(() => { initAreaMap(); }, 100);
 }
 
 async function editArea(id) {
@@ -762,13 +873,25 @@ async function editArea(id) {
     const a = j.areas.find(x => x.id === id);
     if (!a) return;
     document.getElementById('areaId').value = a.id;
-    document.getElementById('areaModalTitle').textContent = 'Editar área';
+    document.getElementById('areaModalTitle').textContent = 'Editar área de cobertura';
     document.getElementById('areaNome').value = a.nome;
     document.getElementById('areaCidadeNome').value = a.cidade || '';
     document.getElementById('areaTaxa').value = a.taxa;
     fillEmpresaSelect('areaEmpresa', a.empresa_id);
     document.getElementById('areaModal').classList.add('open');
+    setTimeout(() => {
+      initAreaMap();
+      if (a.poligono && a.poligono.length > 2) {
+        renderPolygonOnMap(a.poligono);
+      }
+    }, 100);
   } catch { toast('Erro'); }
+}
+
+function closeAreaModal() {
+  closeModal('areaModal');
+  if (areaMap) { areaMap.remove(); areaMap = null; }
+  areaPolygon = null;
 }
 
 async function saveArea() {
@@ -780,9 +903,13 @@ async function saveArea() {
     empresa_id: document.getElementById('areaEmpresa').value,
   };
   if (!data.nome || !data.empresa_id || isNaN(data.taxa)) { toast('Preencha nome, empresa e taxa'); return; }
+  const coords = getPolygonCoords();
+  if (coords && coords.length >= 3) {
+    data.poligono = coords;
+  }
   try {
     const r = id ? await api('/areas/' + id, { method: 'PUT', body: JSON.stringify(data) }) : await api('/areas', { method: 'POST', body: JSON.stringify(data) });
-    if (r.ok) { toast('Área salva'); closeModal('areaModal'); loadAreas(); }
+    if (r.ok) { toast('Zona salva'); closeAreaModal(); loadAreas(); }
     else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
   } catch { toast('Erro de conexão'); }
 }

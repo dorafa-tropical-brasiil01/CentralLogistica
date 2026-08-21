@@ -151,3 +151,64 @@ def compute_fee(
         "client_maps_url": str(client_maps_url or "").strip(),
         "method": "haversine",
     }
+
+
+def point_in_polygon(point: tuple[float, float], polygon: list[list[float]]) -> bool:
+    """Verifica se um ponto (lat, lng) está dentro de um polígono [[lat,lng],...].
+
+    Usa o algoritmo ray-casting.
+    """
+    if not polygon or len(polygon) < 3:
+        return False
+
+    lat, lng = point
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        yi, xi = polygon[i][0], polygon[i][1]
+        yj, xj = polygon[j][0], polygon[j][1]
+
+        intersect = ((yi > lat) != (yj > lat)) and (
+            lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-15) + xi
+        )
+        if intersect:
+            inside = not inside
+        j = i
+
+    return inside
+
+
+def compute_fee_by_zone(
+    *,
+    client_maps_url: str,
+    areas: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Calcula o frete baseado na zona de cobertura onde o endereço cai.
+
+    areas: lista de dicts com 'nome', 'taxa', 'poligono' ([[lat,lng],...])
+    Retorna o primeiro match (menor taxa primeiro se houver empate).
+    """
+    client_url = str(client_maps_url or "").strip()
+    if not client_url:
+        return None
+
+    coords = extract_lat_lng(client_url)
+    if coords is None:
+        return None
+
+    for area in areas:
+        poligono = area.get("poligono")
+        if not poligono or len(poligono) < 3:
+            continue
+        if point_in_polygon(coords, poligono):
+            return {
+                "enabled": True,
+                "fee": float(area.get("taxa") or 0),
+                "distance_km": 0,
+                "zone": area.get("nome"),
+                "client_maps_url": client_url,
+                "method": "zone",
+            }
+
+    return None
