@@ -293,36 +293,40 @@ def ordens():
         where.append("o.status = %s")
         params.append(status)
 
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute(f"""
-            SELECT id, uuid, protocolo, solicitacao_id, status, taxa,
-                   entregador_id, u.nome as entregador_nome,
-                   payload_json, criado_em, entregue_em
-            FROM ordens_servico o
-            LEFT JOIN usuarios u ON u.id = o.entregador_id
-            WHERE {' AND '.join(where)}
-            ORDER BY criado_em DESC
-            LIMIT 200
-        """, params)
-        items = []
-        for r in (dict(x) for x in cur.fetchall()):
-            payload = r.get("payload_json")
-            if isinstance(payload, str):
-                try:
-                    payload = json.loads(payload)
-                except Exception:
-                    payload = {}
-            items.append({
-                "id": r["id"],
-                "protocolo": r.get("protocolo"),
-                "solicitacao_id": r.get("solicitacao_id"),
-                "status": r["status"],
-                "taxa": float(r["taxa"] or 0),
-                "entregador": r.get("entregador_nome"),
-                "payload": payload,
-                "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
-                "entregue_em": r["entregue_em"].isoformat() if r.get("entregue_em") else None,
-            })
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT o.id, o.uuid, o.protocolo, o.solicitacao_id, o.status, o.taxa,
+                       o.entregador_id, u.nome as entregador_nome,
+                       o.payload_json, o.criado_em, o.entregue_em
+                FROM ordens_servico o
+                LEFT JOIN usuarios u ON u.id = o.entregador_id
+                WHERE {' AND '.join(where)}
+                ORDER BY o.criado_em DESC
+                LIMIT 200
+            """, params)
+            items = []
+            for r in (dict(x) for x in cur.fetchall()):
+                payload = r.get("payload_json")
+                if isinstance(payload, str):
+                    try:
+                        payload = json.loads(payload)
+                    except Exception:
+                        payload = {}
+                items.append({
+                    "id": r["id"],
+                    "protocolo": r.get("protocolo"),
+                    "solicitacao_id": r.get("solicitacao_id"),
+                    "status": r["status"],
+                    "taxa": float(r["taxa"] or 0),
+                    "entregador": r.get("entregador_nome"),
+                    "payload": payload,
+                    "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
+                    "entregue_em": r["entregue_em"].isoformat() if r.get("entregue_em") else None,
+                })
 
-    return jsonify({"ok": True, "ordens": items, "horas": horas})
+        return jsonify({"ok": True, "ordens": items, "horas": horas})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
