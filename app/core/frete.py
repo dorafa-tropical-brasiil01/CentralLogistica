@@ -207,6 +207,7 @@ def compute_fee_by_zone(
                 "fee": float(area.get("taxa") or 0),
                 "distance_km": 0,
                 "zone": area.get("nome"),
+                "cidade": area.get("cidade"),
                 "client_maps_url": client_url,
                 "method": "zone",
             }

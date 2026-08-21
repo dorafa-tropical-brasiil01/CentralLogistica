@@ -50,4 +50,19 @@ def ensure_schema() -> None:
             cur.execute("ALTER TABLE areas_cobertura ADD COLUMN IF NOT EXISTS cor TEXT DEFAULT '#00d4aa'")
             logger.info("Migração areas_cobertura: coluna cor adicionada")
 
+        # Migração: areas_cobertura — tornar empresa_id opcional (NULL = zona global)
+        cur.execute("""
+            SELECT is_nullable FROM information_schema.columns
+            WHERE table_name = 'areas_cobertura' AND column_name = 'empresa_id'
+        """)
+        row = cur.fetchone()
+        if row and row["is_nullable"] == "NO":
+            cur.execute("ALTER TABLE areas_cobertura ALTER COLUMN empresa_id DROP NOT NULL")
+            logger.info("Migração areas_cobertura: empresa_id agora é opcional (zona global por cidade)")
+
+        # Migração: limpar empresa_id das zonas existentes (viram globais da cidade)
+        cur.execute("UPDATE areas_cobertura SET empresa_id = NULL WHERE empresa_id IS NOT NULL")
+        if cur.rowcount > 0:
+            logger.info("Migração areas_cobertura: %d zonas convertidas para global (empresa_id=NULL)", cur.rowcount)
+
         logger.info("Schema aplicado com sucesso")

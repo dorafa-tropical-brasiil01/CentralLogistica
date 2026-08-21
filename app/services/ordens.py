@@ -102,21 +102,38 @@ def _calcular_frete_real(
     """Calcula o frete real usando a configuração da REMO.
 
     Prioridade:
-    1. Zona de cobertura (polígono) — se o endereço cai em uma zona, usa a taxa da zona
-    2. Haversine (distância) — fallback se houver config de frete
+    1. Zona de cobertura global (polígono por cidade) — independente da empresa
+    2. Zona de cobertura específica da empresa (override, se houver)
+    3. Haversine (distância) — fallback se houver config de frete
 
     Retorna None se não houver configuração ou não for possível calcular.
     """
     client_url = str(client_maps_url or "").strip()
 
-    # 1. Tenta calcular por zona de cobertura
+    # 1. Tenta zona global (todas as cidades ativas)
     if client_url:
         from app.repositories import areas as areas_repo
-        areas = areas_repo.listar_ativas_por_empresa(empresa_id)
+        areas = areas_repo.listar_todas_ativas()
         if areas:
             zone_calc = frete_calc.compute_fee_by_zone(
                 client_maps_url=client_url,
                 areas=areas,
+            )
+            if zone_calc:
+                logger.info(
+                    "frete por zona global zona=%s cidade=%s fee=%.2f",
+                    zone_calc.get("zone"), zone_calc.get("cidade"), zone_calc["fee"],
+                )
+                return float(zone_calc["fee"])
+
+    # 2. Tenta zona específica da empresa (override)
+    if client_url:
+        from app.repositories import areas as areas_repo
+        areas_emp = areas_repo.listar_ativas_por_empresa(empresa_id)
+        if areas_emp:
+            zone_calc = frete_calc.compute_fee_by_zone(
+                client_maps_url=client_url,
+                areas=areas_emp,
             )
             if zone_calc:
                 logger.info(
@@ -125,7 +142,7 @@ def _calcular_frete_real(
                 )
                 return float(zone_calc["fee"])
 
-    # 2. Fallback: haversine
+    # 3. Fallback: haversine
     cfg = frete_repo.get(empresa_id)
     if not cfg:
         logger.info("frete_config nao encontrada para empresa %s", empresa_id)

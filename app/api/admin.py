@@ -652,15 +652,15 @@ def criar_area():
         return _err("nao_autenticado", 401)
 
     data = request.get_json(silent=True) or {}
-    empresa_id = data.get("empresa_id")
+    empresa_id = data.get("empresa_id")  # opcional: NULL = zona global
     nome = str(data.get("nome") or "").strip()
     cidade = str(data.get("cidade") or "").strip()
     taxa = data.get("taxa")
     poligono = data.get("poligono")
     cor = str(data.get("cor") or "#00d4aa").strip() or "#00d4aa"
 
-    if not empresa_id or not nome or taxa is None:
-        return _err("empresa_id, nome e taxa sao obrigatorios", 400)
+    if not nome or taxa is None:
+        return _err("nome e taxa sao obrigatorios", 400)
 
     with transaction() as conn:
         cur = conn.cursor()
@@ -670,7 +670,7 @@ def criar_area():
             VALUES (%s, %s, %s, %s, %s, %s, 'ATIVO')
             RETURNING *
             """,
-            (empresa_id, nome, cidade or None, float(taxa),
+            (empresa_id or None, nome, cidade or None, float(taxa),
              psycopg2.extras.Json(poligono) if poligono else None, cor),
         )
         area = dict(cur.fetchone())

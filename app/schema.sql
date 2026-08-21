@@ -186,7 +186,7 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultima_localizacao_em TIMESTAMPTZ;
 -- Áreas de cobertura (zonas de preço por cidade/bairro)
 CREATE TABLE IF NOT EXISTS areas_cobertura (
     id BIGSERIAL PRIMARY KEY,
-    empresa_id TEXT NOT NULL REFERENCES empresas(id),
+    empresa_id TEXT REFERENCES empresas(id),  -- opcional: NULL = zona global da cidade
     nome TEXT NOT NULL,
     cidade TEXT,
     taxa NUMERIC(12,2) NOT NULL,
@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS areas_cobertura (
 CREATE INDEX IF NOT EXISTS idx_areas_empresa ON areas_cobertura(empresa_id);
 CREATE INDEX IF NOT EXISTS idx_areas_cidade ON areas_cobertura(cidade);
 CREATE INDEX IF NOT EXISTS idx_areas_status ON areas_cobertura(status);
+CREATE INDEX IF NOT EXISTS idx_areas_cidade_status ON areas_cobertura(cidade, status);
 
 -- Comissões dos entregadores (percentual da taxa de frete)
 CREATE TABLE IF NOT EXISTS comissoes_entregador (
