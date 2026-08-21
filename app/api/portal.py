@@ -284,7 +284,7 @@ def ordens():
     horas = int(request.args.get("horas", 24))
     status = request.args.get("status")
 
-    where = ["empresa_id = %s", "criado_em > NOW() - INTERVAL '%s hours'"]
+    where = ["empresa_id = %s", "criado_em > NOW() - make_interval(hours => %s)"]
     params: list[Any] = [empresa_id, horas]
     if status:
         where.append("status = %s")
