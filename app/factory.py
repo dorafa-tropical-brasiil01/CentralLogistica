@@ -26,12 +26,13 @@ def create_app() -> Flask:
     ensure_schema()
 
     # Blueprints
-    from app.api import admin, financeiro, frete, ordens, pwa
+    from app.api import admin, financeiro, frete, ordens, portal, pwa
     app.register_blueprint(financeiro.bp, url_prefix="/api/v1")
     app.register_blueprint(ordens.bp, url_prefix="/api/v1")
     app.register_blueprint(frete.bp, url_prefix="/api/v1")
     app.register_blueprint(pwa.bp, url_prefix="/api/pwa")
     app.register_blueprint(admin.bp, url_prefix="/api/admin")
+    app.register_blueprint(portal.bp, url_prefix="/api/portal")
 
     # PWA — página do entregador
     @app.route("/")
@@ -42,6 +43,11 @@ def create_app() -> Flask:
     @app.route("/admin")
     def admin_page():
         return render_template("admin/index.html")
+
+    # Portal — área do cliente
+    @app.route("/portal")
+    def portal_page():
+        return render_template("portal/index.html")
 
     @app.route("/health")
     def health():
