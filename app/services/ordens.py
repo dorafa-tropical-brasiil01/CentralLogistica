@@ -101,34 +101,25 @@ def _calcular_frete_real(
 ) -> float | None:
     """Calcula o frete real usando a configuração da REMO.
 
-    Prioridade:
-    1. Zona de cobertura global (polígono por cidade) — independente da empresa
-    2. Zona de cobertura específica da empresa (override, se houver)
-    3. Haversine (distância) — fallback se houver config de frete
+    Regra: max(taxa_zona, taxa_distancia).
+    - Se o endereço cai em uma zona, usa max(taxa_zona, taxa_distancia).
+    - Se não cai em zona, usa só taxa_distancia (haversine).
+    - Se a zona é grátis (taxa=0), o cliente paga 0.
+    - Zona específica da empresa tem prioridade sobre zona global.
 
     Retorna None se não houver configuração ou não for possível calcular.
     """
     client_url = str(client_maps_url or "").strip()
 
-    # 1. Tenta zona global (todas as cidades ativas)
-    if client_url:
-        from app.repositories import areas as areas_repo
-        areas = areas_repo.listar_todas_ativas()
-        if areas:
-            zone_calc = frete_calc.compute_fee_by_zone(
-                client_maps_url=client_url,
-                areas=areas,
-            )
-            if zone_calc:
-                logger.info(
-                    "frete por zona global zona=%s cidade=%s fee=%.2f",
-                    zone_calc.get("zone"), zone_calc.get("cidade"), zone_calc["fee"],
-                )
-                return float(zone_calc["fee"])
+    # --- Calcula taxa por zona (se houver) ---
+    zone_fee: float | None = None
+    zone_name: str | None = None
+    zone_gratis: bool = False
 
-    # 2. Tenta zona específica da empresa (override)
     if client_url:
         from app.repositories import areas as areas_repo
+
+        # 1. Zona específica da empresa (override) tem prioridade
         areas_emp = areas_repo.listar_ativas_por_empresa(empresa_id)
         if areas_emp:
             zone_calc = frete_calc.compute_fee_by_zone(
@@ -136,50 +127,79 @@ def _calcular_frete_real(
                 areas=areas_emp,
             )
             if zone_calc:
+                zone_fee = float(zone_calc["fee"])
+                zone_name = zone_calc.get("zone")
                 logger.info(
                     "frete por zona empresa=%s zona=%s fee=%.2f",
-                    empresa_id, zone_calc.get("zone"), zone_calc["fee"],
+                    empresa_id, zone_name, zone_fee,
                 )
-                return float(zone_calc["fee"])
 
-    # 3. Fallback: haversine
+        # 2. Zona global (todas as cidades ativas)
+        if zone_fee is None:
+            areas = areas_repo.listar_todas_ativas()
+            if areas:
+                zone_calc = frete_calc.compute_fee_by_zone(
+                    client_maps_url=client_url,
+                    areas=areas,
+                )
+                if zone_calc:
+                    zone_fee = float(zone_calc["fee"])
+                    zone_name = zone_calc.get("zone")
+                    logger.info(
+                        "frete por zona global zona=%s cidade=%s fee=%.2f",
+                        zone_name, zone_calc.get("cidade"), zone_fee,
+                    )
+
+    # --- Calcula taxa por distância (haversine) ---
+    distance_fee: float | None = None
     cfg = frete_repo.get(empresa_id)
-    if not cfg:
-        logger.info("frete_config nao encontrada para empresa %s", empresa_id)
-        return None
+    if cfg and bool(cfg.get("enabled") or False):
+        origin = str(cfg.get("origin_maps_url") or origin_maps_url or "").strip()
+        if origin and client_url:
+            config_dict = {
+                "enabled": cfg.get("enabled"),
+                "origin_maps_url": cfg.get("origin_maps_url"),
+                "base": cfg.get("base"),
+                "per_km": cfg.get("per_km"),
+                "min": cfg.get("min_v"),
+                "max": cfg.get("max_v"),
+            }
+            calc = frete_calc.compute_fee(
+                config=config_dict,
+                origin_maps_url=origin,
+                client_maps_url=client_url,
+            )
+            if calc:
+                distance_fee = float(calc["fee"])
+                logger.info(
+                    "frete por distancia empresa=%s distancia=%.2fkm fee=%.2f",
+                    empresa_id, calc["distance_km"], distance_fee,
+                )
 
-    if not bool(cfg.get("enabled") or False):
-        logger.info("frete desabilitado para empresa %s", empresa_id)
-        return None
+    # --- Regra final: max(zona, distancia) ---
+    if zone_fee is not None and zone_fee == 0:
+        # Zona grátis: cliente paga 0
+        logger.info("frete final: zona gratis (%s) → 0.00", zone_name)
+        return 0.0
 
-    origin = str(cfg.get("origin_maps_url") or origin_maps_url or "").strip()
-    if not origin or not client_url:
-        logger.info("coordenadas insuficientes: origin=%s client=%s", bool(origin), bool(client_url))
-        return None
+    if zone_fee is not None and distance_fee is not None:
+        final_fee = max(float(zone_fee), float(distance_fee))
+        logger.info(
+            "frete final: max(zona=%.2f, distancia=%.2f) = %.2f [%s]",
+            zone_fee, distance_fee, final_fee, zone_name,
+        )
+        return float(final_fee)
 
-    config_dict = {
-        "enabled": cfg.get("enabled"),
-        "origin_maps_url": cfg.get("origin_maps_url"),
-        "base": cfg.get("base"),
-        "per_km": cfg.get("per_km"),
-        "min": cfg.get("min_v"),
-        "max": cfg.get("max_v"),
-    }
+    if zone_fee is not None:
+        logger.info("frete final: zona apenas = %.2f [%s]", zone_fee, zone_name)
+        return float(zone_fee)
 
-    calc = frete_calc.compute_fee(
-        config=config_dict,
-        origin_maps_url=origin,
-        client_maps_url=client_url,
-    )
-    if not calc:
-        logger.info("calculo de frete retornou None para empresa %s", empresa_id)
-        return None
+    if distance_fee is not None:
+        logger.info("frete final: distancia apenas = %.2f", distance_fee)
+        return float(distance_fee)
 
-    logger.info(
-        "frete calculado empresa=%s distancia=%.2fkm fee=%.2f",
-        empresa_id, calc["distance_km"], calc["fee"],
-    )
-    return float(calc["fee"])
+    logger.info("frete nao calculado para empresa %s", empresa_id)
+    return None
 
 
 def atualizar_status(
