@@ -2,14 +2,44 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from flask import Blueprint, jsonify, request, session
 
+from app.core.db import connect
 from app.repositories import ordens as ordens_repo
 from app.repositories import usuarios as usuarios_repo
 from app.services import auth as auth_service
 from app.services import ordens as ordens_service
 
 bp = Blueprint("pwa", __name__)
+
+# Janela de tempo para considerar GPS ativo (5 minutos)
+GPS_STALE_MINUTES = 5
+
+
+def _gps_ativo(usuario_id: int) -> bool:
+    """Verifica se o entregador tem localização recente (<5 min)."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT ultima_localizacao_em FROM usuarios WHERE id = %s",
+            (usuario_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        ultima = row.get("ultima_localizacao_em") if isinstance(row, dict) else row["ultima_localizacao_em"]
+        if not ultima:
+            return False
+        if isinstance(ultima, str):
+            try:
+                ultima = datetime.fromisoformat(ultima.replace("Z", "+00:00"))
+            except Exception:
+                return False
+        # Se for offset-aware, comparar com UTC agora; senão, comparar com local
+        agora = datetime.now(ultima.tzinfo) if ultima.tzinfo else datetime.now()
+        return (agora - ultima) <= timedelta(minutes=GPS_STALE_MINUTES)
 
 
 def _extrair_token() -> str:
@@ -215,6 +245,10 @@ def reivindicar_ordem(ordem_id: int):
     if user.get("perfil") != "ENTREGADOR":
         return jsonify({"error": "apenas_entregador_pode_reivindicar"}), 403
 
+    # REGRA: GPS obrigatório para reivindicar entrega
+    if not _gps_ativo(user["usuario_id"]):
+        return jsonify({"error": "gps_obrigatorio", "msg": "Ative o GPS para reivindicar entregas."}), 403
+
     # Verifica se já tem corrida ativa
     ativas = ordens_repo.list_by_entregador(user["usuario_id"])
     if ativas:
@@ -278,6 +312,11 @@ def atualizar_status(ordem_id: int):
     # Entregador só pode atualizar suas próprias ordens
     if user.get("perfil") == "ENTREGADOR" and ordem.get("entregador_id") != user["usuario_id"]:
         return jsonify({"error": "ordem_nao_pertence_ao_entregador"}), 403
+
+    # REGRA: GPS obrigatório para iniciar rota (EM_ROTA)
+    if status == "EM_ROTA" and user.get("perfil") == "ENTREGADOR":
+        if not _gps_ativo(user["usuario_id"]):
+            return jsonify({"error": "gps_obrigatorio", "msg": "Ative o GPS para iniciar a rota."}), 403
 
     try:
         ordem = ordens_service.atualizar_status(ordem_id=ordem_id, status=status)

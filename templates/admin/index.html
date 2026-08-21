@@ -227,12 +227,31 @@
             <span><i class="dot route"></i> Em rota</span>
             <span><i class="dot done"></i> Entregue</span>
             <span><i class="dot zone"></i> Zona</span>
+          <div class="map-container">
+          <div id="map"></div>
+          <div class="map-overlay">
+            <div style="font-weight:900">Tempo Real</div>
+            <div id="mapStats" style="opacity:.8;font-size:12px;margin-top:2px">—</div>
+          </div>
+          <div class="map-legend">
+            <span><i class="dot pending"></i> Pendente</span>
+            <span><i class="dot route"></i> Em rota</span>
+            <span><i class="dot done"></i> Entregue</span>
+            <span><i class="dot zone"></i> Zona</span>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-title">Entregadores — Status GPS</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Status</th><th>GPS</th><th>Última localização</th><th>Corrida</th></tr></thead>
+              <tbody id="entStatusTable"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
       <!-- MÓDULO 2: FINANCEIRO -->
-      <div class="module" id="mod-financeiro">
         <div class="tabs">
           <div class="tab active" onclick="switchFinTab(this, 'pagamentos')">Histórico de pagamentos</div>
           <div class="tab" onclick="switchFinTab(this, 'fechamento')">Fechamento semanal</div>
@@ -662,6 +681,24 @@ async function loadMonitor() {
       const icon = L.divIcon({ className: '', html: '<div class="driver-marker">' + (e.nome || 'E').charAt(0) + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
       L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador');
     });
+
+    // Tabela de status de entregadores
+    const entTb = document.getElementById('entStatusTable');
+    if (entTb) {
+      if (!j.entregadores.length) {
+        entTb.innerHTML = '<tr><td colspan="5" class="empty">Nenhum entregador cadastrado</td></tr>';
+      } else {
+        entTb.innerHTML = j.entregadores.map(e => {
+          const hasGps = !!e.localizacao;
+          const lastLoc = e.ultima_localizacao_em ? fmtDate(e.ultima_localizacao_em) : '—';
+          const gpsBadge = hasGps
+            ? '<span class="badge badge-success">ON</span>'
+            : '<span class="badge badge-danger">OFF</span>';
+          const corrida = e.corrida_ativa ? `<span class="badge badge-info">${e.corrida_ativa}</span>` : '—';
+          return `<tr><td>${e.nome || e.username}</td><td>${e.ativo ? 'Ativo' : 'Inativo'}</td><td>${gpsBadge}</td><td style="font-size:12px">${lastLoc}</td><td>${corrida}</td></tr>`;
+        }).join('');
+      }
+    }
   } catch (err) { if (err.message !== 'nao_autenticado') toast('Erro ao carregar monitoramento'); }
 }
 

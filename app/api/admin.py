@@ -146,9 +146,9 @@ def monitoramento():
 
         # Entregadores com localização
         cur.execute("""
-            SELECT id, username, nome, telefone, localizacao_atual, ultima_localizacao_em
+            SELECT id, username, nome, telefone, ativo, localizacao_atual, ultima_localizacao_em
             FROM usuarios
-            WHERE perfil = 'ENTREGADOR' AND ativo = TRUE
+            WHERE perfil = 'ENTREGADOR'
         """)
         entregadores = []
         for r in (dict(x) for x in cur.fetchall()):
@@ -158,13 +158,21 @@ def monitoramento():
                     loc = json.loads(loc)
                 except Exception:
                     loc = None
+            # Verifica se tem corrida ativa
+            corrida_ativa = None
+            for o in ordens:
+                if o.get("entregador_id") == r["id"] and o.get("status") in ("ATRIBUIDO", "EM_ROTA"):
+                    corrida_ativa = o.get("status")
+                    break
             entregadores.append({
                 "id": r["id"],
                 "nome": r.get("nome"),
                 "username": r.get("username"),
                 "telefone": r.get("telefone"),
+                "ativo": r.get("ativo"),
                 "localizacao": loc,
                 "ultima_localizacao_em": r.get("ultima_localizacao_em").isoformat() if r.get("ultima_localizacao_em") else None,
+                "corrida_ativa": corrida_ativa,
             })
 
     return jsonify({

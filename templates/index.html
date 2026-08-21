@@ -164,6 +164,7 @@
           <div>
             <div class="brand-title">Logística Do'Rafa</div>
             <div class="brand-sub" id="roleLabel">—</div>
+            <div class="brand-sub" id="gpsStatus" style="color:#dc3545;font-weight:700">📍 GPS: OFF</div>
           </div>
         </div>
         <div class="topbar-actions">
@@ -380,7 +381,14 @@
           showToast('Entrega já foi pega por outro entregador');
           renderDisponiveis();
         } else if (r.status === 403) {
-          showToast('Você já tem uma corrida ativa');
+          const j = await r.json().catch(() => ({}));
+          if (j.error === 'gps_obrigatorio') {
+            showToast('📍 GPS obrigatório! Ative o GPS e tente novamente.');
+          } else if (j.error === 'ja_tem_corrida_ativa') {
+            showToast('Você já tem uma corrida ativa');
+          } else {
+            showToast('Erro: ' + (j.error || r.status));
+          }
         } else {
           const j = await r.json().catch(() => ({}));
           showToast('Erro: ' + (j.error || r.status));
@@ -712,6 +720,13 @@
         if (r.ok) {
           showToast('Status atualizado: ' + status);
           renderEntregadorView();
+        } else if (r.status === 403) {
+          const j = await r.json().catch(() => ({}));
+          if (j.error === 'gps_obrigatorio') {
+            showToast('📍 GPS obrigatório! Ative o GPS para iniciar a rota.');
+          } else {
+            showToast('Erro: ' + (j.error || r.status));
+          }
         } else {
           const j = await r.json().catch(() => ({}));
           showToast('Erro: ' + (j.error || r.status));
@@ -728,6 +743,8 @@
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const precisao = pos.coords.accuracy;
+        const gpsEl = document.getElementById('gpsStatus');
+        if (gpsEl) { gpsEl.textContent = '📍 GPS: ON'; gpsEl.style.color = '#28a745'; }
         try {
           await api('/localizacao', {
             method: 'POST',
@@ -737,6 +754,8 @@
       }, err => {
         showToast('Erro GPS: ' + (err.message || 'permissão negada'));
         gpsWatchId = null;
+        const gpsEl = document.getElementById('gpsStatus');
+        if (gpsEl) { gpsEl.textContent = '📍 GPS: OFF'; gpsEl.style.color = '#dc3545'; }
       }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
     }
 
@@ -745,6 +764,8 @@
         navigator.geolocation.clearWatch(gpsWatchId);
         gpsWatchId = null;
         showToast('GPS desativado');
+        const gpsEl = document.getElementById('gpsStatus');
+        if (gpsEl) { gpsEl.textContent = '📍 GPS: OFF'; gpsEl.style.color = '#dc3545'; }
       }
     }
 
