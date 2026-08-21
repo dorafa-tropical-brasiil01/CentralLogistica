@@ -284,8 +284,11 @@ def ordens():
     horas = int(request.args.get("horas", 24))
     status = request.args.get("status")
 
-    where = ["empresa_id = %s", "criado_em > NOW() - make_interval(hours => %s)"]
-    params: list[Any] = [empresa_id, horas]
+    from datetime import datetime, timedelta
+    limite = datetime.now() - timedelta(hours=horas)
+
+    where = ["empresa_id = %s", "criado_em > %s"]
+    params: list[Any] = [empresa_id, limite.isoformat()]
     if status:
         where.append("status = %s")
         params.append(status)
