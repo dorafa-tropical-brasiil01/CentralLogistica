@@ -26,14 +26,32 @@ def inscrever(*, usuario_id: int, endpoint: str, p256dh: str, auth: str) -> int:
         cur = conn.cursor()
         # Remove inscrições antigas do mesmo endpoint
         cur.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (endpoint,))
-        cur.execute(
-            """
-            INSERT INTO push_subscriptions (usuario_id, endpoint, p256dh, auth)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (usuario_id, endpoint, p256dh, auth),
-        )
+        # Verifica se a coluna keys_json existe (schema antigo)
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'push_subscriptions' AND column_name = 'keys_json'
+        """)
+        has_keys_json = cur.fetchone() is not None
+
+        if has_keys_json:
+            import json as _json
+            cur.execute(
+                """
+                INSERT INTO push_subscriptions (usuario_id, endpoint, p256dh, auth, keys_json)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (usuario_id, endpoint, p256dh, auth, _json.dumps({"p256dh": p256dh, "auth": auth})),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO push_subscriptions (usuario_id, endpoint, p256dh, auth)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (usuario_id, endpoint, p256dh, auth),
+            )
         row = cur.fetchone()
         return row["id"] if row else 0
 
