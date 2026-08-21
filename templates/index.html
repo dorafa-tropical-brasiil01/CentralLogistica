@@ -79,10 +79,14 @@
     .panel.active { display: block; }
 
     .section-title { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .6px; color: var(--text-3); margin: 8px 0 10px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); overflow: hidden; }
     .card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .card-title { font-weight: 900; font-size: 15px; }
     .card-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-wrap table { width: 100%; border-collapse: collapse; min-width: 0; }
+    .table-wrap th, .table-wrap td { padding: 8px 6px; text-align: left; font-size: 13px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .table-wrap th { font-weight: 800; color: var(--text-2); font-size: 11px; text-transform: uppercase; }
     .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 999px; }
     .badge-ready { background: #e6fbf6; color: var(--accent-2); border: 1px solid #b6f3e6; }
     .badge-assigned { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
@@ -373,7 +377,6 @@
         dispEl.innerHTML = disponiveis.map(o => {
           const p = o.payload || {};
           const cliente = p.cliente_nome || '—';
-          const taxa = money(o.taxa);
           const proto = o.protocolo || o.solicitacao_id;
           return `
             <div class="order-mini" style="cursor:pointer;border-color:var(--accent);border-width:2px" onclick="reivindicar(${o.id})">
@@ -382,7 +385,7 @@
                 <span class="badge badge-ready">Pegar entrega</span>
               </div>
               <div class="addr">${cliente}</div>
-              <div class="meta"><span>${o.solicitacao_id}</span><span>${taxa}</span></div>
+              <div class="meta"><span>${o.solicitacao_id}</span></div>
             </div>
           `;
         }).join('');
@@ -707,7 +710,7 @@
               <div class="card-row">
                 <div>
                   <div class="card-title">${proto}</div>
-                  <div class="card-sub">${cliente} • ${money(o.taxa)}</div>
+                  <div class="card-sub">${cliente}</div>
                 </div>
                 <span class="badge ${badgeClass}">${o.status}</span>
               </div>
@@ -834,13 +837,11 @@
         if (!comissoes.length) {
           html += '<div class="empty">Nenhuma comissão ainda. Entregue pedidos para acumular salário!</div>';
         } else {
-          html += '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Protocolo</th><th>Taxa</th><th>%</th><th>Sua comissão</th><th>Status</th></tr></thead><tbody>';
+          html += '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Protocolo</th><th>Sua comissão</th><th>Status</th></tr></thead><tbody>';
           html += comissoes.map(c => `
             <tr>
               <td style="font-size:12px">${fmtDateShort(c.criado_em)}</td>
               <td style="font-size:12px;font-weight:700">${c.protocolo || '—'}</td>
-              <td>${money(c.taxa_total)}</td>
-              <td>${c.pct}%</td>
               <td style="font-weight:900;color:var(--accent)">${money(c.valor)}</td>
               <td><span class="badge ${c.status === 'PAGO' ? 'badge-success' : 'badge-pending'}">${c.status}</span></td>
             </tr>
@@ -954,14 +955,26 @@
           btn.textContent = '🔔 Ativar notificações';
           btn.classList.remove('active');
           showToast('Notificações desativadas');
-        } catch { showToast('Erro ao desativar'); }
+        } catch (err) { showToast('Erro ao desativar: ' + err.message); }
       } else {
         // Inscrever
         try {
+          // Verifica suporte
+          if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            showToast('Push não suportado neste navegador');
+            return;
+          }
+          if (typeof Notification === 'undefined') {
+            showToast('Notificações não suportadas neste navegador');
+            return;
+          }
+          showToast('Solicitando permissão...');
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') { showToast('Permissão negada'); return; }
           const r = await api('/push/vapid-public-key');
           const j = await r.json();
+          if (!j.public_key) { showToast('Push indisponível (sem VAPID)'); return; }
+          showToast('Inscrevendo...');
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
@@ -974,7 +987,7 @@
           showToast('Notificações ativadas!');
           // Envia teste
           setTimeout(() => api('/push/teste', { method: 'POST' }), 500);
-        } catch (err) { showToast('Erro ao ativar: ' + err.message); }
+        } catch (err) { showToast('Erro ao ativar: ' + (err.message || err)); }
       }
     }
 
