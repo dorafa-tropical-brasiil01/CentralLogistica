@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dorafa-logistica-v2';
+const CACHE_NAME = 'remo-pwa-v3';
 const ASSETS = ['/', '/static/manifest.json', '/static/icon.svg'];
 
 self.addEventListener('install', e => {

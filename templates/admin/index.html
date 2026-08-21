@@ -169,7 +169,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h2>REMO Admin</h2>
-      <p>Central Logística Do'Rafa</p>
+      <p>REMO — Central Logística</p>
     </div>
     <nav class="nav">
       <div class="nav-item active" onclick="showModule('monitor', this)"><span class="nav-icon">🗺️</span> Monitoramento</div>
@@ -181,7 +181,7 @@
       <div class="nav-item" onclick="showModule('entregadores', this)"><span class="nav-icon">🛵</span> Entregadores</div>
       <div class="nav-item" onclick="showModule('clientes', this)"><span class="nav-icon">🏪</span> Clientes</div>
     </nav>
-    <div class="sidebar-footer">v1.0 — Do'Rafa Tropical</div>
+    <div class="sidebar-footer">REMO v1.0</div>
   </aside>
 
   <div class="main">
@@ -603,6 +603,8 @@ async function showApp() {
   initMap();
   loadMonitor();
   monitorTimer = setInterval(loadMonitor, 10000);
+  // Força recálculo do mapa após renderização
+  setTimeout(() => { if (map) map.invalidateSize(); }, 300);
 }
 
 function showModule(name, el) {
@@ -633,7 +635,7 @@ function showModule(name, el) {
 function initMap() {
   if (map) { map.remove(); map = null; }
   map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.6869, -49.2648], 13);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
   zonesLayer = L.layerGroup().addTo(map);
   routesLayer = L.layerGroup().addTo(map);
