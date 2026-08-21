@@ -356,7 +356,7 @@ def admin_criar_usuario():
     if not username or not nome or not perfil or not senha:
         return jsonify({"error": "username, nome, perfil e senha obrigatorios"}), 400
 
-    if perfil not in ("ADMIN", "CENTRAL", "ENTREGADOR", "OPERADOR"):
+    if perfil not in ("ADMIN", "CENTRAL", "ENTREGADOR", "OPERADOR", "EMPRESA", "CLIENTE"):
         return jsonify({"error": "perfil_invalido"}), 400
 
     from app.repositories import usuarios as usuarios_repo

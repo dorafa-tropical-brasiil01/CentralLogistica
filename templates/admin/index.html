@@ -174,6 +174,7 @@
       <div class="nav-item" onclick="showModule('ordens', this)"><span class="nav-icon">📦</span> Ordens</div>
       <div class="nav-item" onclick="showModule('areas', this)"><span class="nav-icon">📍</span> Áreas</div>
       <div class="nav-item" onclick="showModule('entregadores', this)"><span class="nav-icon">🛵</span> Entregadores</div>
+      <div class="nav-item" onclick="showModule('clientes', this)"><span class="nav-icon">🏪</span> Clientes</div>
     </nav>
     <div class="sidebar-footer">v1.0 — Do'Rafa Tropical</div>
   </aside>
@@ -365,6 +366,22 @@
           </div>
         </div>
       </div>
+
+      <!-- MÓDULO 8: CLIENTES -->
+      <div class="module" id="mod-clientes">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-title" style="margin:0">Clientes (restaurantes)</div>
+            <button class="btn btn-accent btn-sm" onclick="openClienteModal()">+ Novo cliente</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Username</th><th>Telefone</th><th>Empresa</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="cliTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -398,6 +415,23 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('areaModal')">Cancelar</button>
       <button class="btn btn-accent" onclick="saveArea()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Cliente -->
+<div class="modal-bg" id="cliModal">
+  <div class="modal">
+    <h3 id="cliModalTitle">Novo cliente</h3>
+    <input type="hidden" id="cliId" />
+    <div class="form-group"><label>Nome</label><input id="cliNome" type="text" placeholder="Restaurante Do'Rafa" /></div>
+    <div class="form-group"><label>Username</label><input id="cliUsername" type="text" placeholder="cliente1" /></div>
+    <div class="form-group"><label>Senha</label><input id="cliSenha" type="password" placeholder="Deixe vazio para não alterar" /></div>
+    <div class="form-group"><label>Telefone</label><input id="cliTelefone" type="text" placeholder="(64) 99999-9999" /></div>
+    <div class="form-group"><label>Empresa</label><select id="cliEmpresa"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('cliModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveCliente()">Salvar</button>
     </div>
   </div>
 </div>
@@ -476,7 +510,7 @@ function showModule(name, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('mod-' + name).classList.add('active');
   el.classList.add('active');
-  const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores' };
+  const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores', clientes: 'Clientes' };
   document.getElementById('moduleTitle').textContent = titles[name] || name;
   if (name === 'monitor') { setTimeout(() => map && map.invalidateSize(), 100); loadMonitor(); }
   if (name === 'financeiro') loadFinanceiro();
@@ -485,6 +519,7 @@ function showModule(name, el) {
   if (name === 'ordens') loadOrdens();
   if (name === 'areas') loadAreas();
   if (name === 'entregadores') loadEntregadores();
+  if (name === 'clientes') loadClientes();
 }
 
 // MAPA
@@ -798,6 +833,73 @@ async function delEnt(id) {
   try {
     const r = await api('/entregadores/' + id, { method: 'DELETE' });
     if (r.ok) { toast('Entregador desativado'); loadEntregadores(); }
+  } catch { toast('Erro'); }
+}
+
+// CLIENTES
+async function loadClientes() {
+  try {
+    const r = await api('/clientes');
+    const j = await r.json();
+    const tb = document.getElementById('cliTable');
+    if (!j.clientes.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Nenhum cliente cadastrado</td></tr>'; return; }
+    tb.innerHTML = j.clientes.map(c => `<tr><td>${c.nome}</td><td>${c.username}</td><td>${c.telefone || '—'}</td><td>${c.empresa || '—'}</td><td style="font-weight:900;color:${c.saldo > 0 ? 'var(--accent-2)' : 'var(--danger)'}">${money(c.saldo)}</td><td><span class="badge ${c.ativo ? 'badge-success' : 'badge-pending'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editCli(${c.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delCli(${c.id})">Desativar</button></td></tr>`).join('');
+  } catch { toast('Erro ao carregar clientes'); }
+}
+
+function openClienteModal() {
+  document.getElementById('cliId').value = '';
+  document.getElementById('cliModalTitle').textContent = 'Novo cliente';
+  document.getElementById('cliNome').value = '';
+  document.getElementById('cliUsername').value = '';
+  document.getElementById('cliSenha').value = '';
+  document.getElementById('cliSenha').placeholder = 'Senha obrigatória';
+  document.getElementById('cliTelefone').value = '';
+  fillEmpresaSelect('cliEmpresa');
+  document.getElementById('cliModal').classList.add('open');
+}
+
+async function editCli(id) {
+  try {
+    const r = await api('/clientes');
+    const j = await r.json();
+    const c = j.clientes.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('cliId').value = c.id;
+    document.getElementById('cliModalTitle').textContent = 'Editar cliente';
+    document.getElementById('cliNome').value = c.nome;
+    document.getElementById('cliUsername').value = c.username;
+    document.getElementById('cliSenha').value = '';
+    document.getElementById('cliSenha').placeholder = 'Deixe vazio para não alterar';
+    document.getElementById('cliTelefone').value = c.telefone || '';
+    fillEmpresaSelect('cliEmpresa', c.empresa_id);
+    document.getElementById('cliModal').classList.add('open');
+  } catch { toast('Erro'); }
+}
+
+async function saveCliente() {
+  const id = document.getElementById('cliId').value;
+  const nome = document.getElementById('cliNome').value.trim();
+  const username = document.getElementById('cliUsername').value.trim();
+  const senha = document.getElementById('cliSenha').value;
+  const telefone = document.getElementById('cliTelefone').value.trim();
+  const empresa_id = document.getElementById('cliEmpresa').value;
+  if (!nome || !username || !empresa_id) { toast('Nome, username e empresa obrigatórios'); return; }
+  if (!id && !senha) { toast('Senha obrigatória para novo cliente'); return; }
+  const data = { nome, username, telefone, empresa_id };
+  if (senha) data.senha = senha;
+  try {
+    const r = id ? await api('/clientes/' + id, { method: 'PUT', body: JSON.stringify(data) }) : await api('/clientes', { method: 'POST', body: JSON.stringify(data) });
+    if (r.ok) { toast('Cliente salvo'); closeModal('cliModal'); loadClientes(); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
+}
+
+async function delCli(id) {
+  if (!confirm('Desativar este cliente?')) return;
+  try {
+    const r = await api('/clientes/' + id, { method: 'DELETE' });
+    if (r.ok) { toast('Cliente desativado'); loadClientes(); }
   } catch { toast('Erro'); }
 }
 

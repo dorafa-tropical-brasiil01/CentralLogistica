@@ -913,3 +913,129 @@ def listar_empresas():
         items = [{"id": r["id"], "nome": r["nome"], "cnpj": r.get("cnpj"), "ativo": r.get("ativo")}
                  for r in (dict(x) for x in cur.fetchall())]
     return jsonify({"ok": True, "empresas": items})
+
+
+# ============================================================
+# Clientes (usuarios com perfil EMPRESA/CLIENTE — acessam o portal)
+# ============================================================
+
+@bp.get("/clientes")
+def listar_clientes():
+    """Lista usuarios-cliente (perfil EMPRESA/CLIENTE)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.nome, u.telefone, u.empresa_id,
+                   e.nome as empresa_nome, u.ativo, u.criado_em,
+                   c.saldo_atual
+            FROM usuarios u
+            LEFT JOIN empresas e ON e.id = u.empresa_id
+            LEFT JOIN carteiras c ON c.empresa_id = u.empresa_id
+            WHERE u.perfil IN ('EMPRESA', 'CLIENTE')
+            ORDER BY u.nome
+        """)
+        items = []
+        for r in (dict(x) for x in cur.fetchall()):
+            items.append({
+                "id": r["id"],
+                "username": r.get("username"),
+                "nome": r.get("nome"),
+                "telefone": r.get("telefone"),
+                "empresa": r.get("empresa_nome"),
+                "empresa_id": r.get("empresa_id"),
+                "saldo": float(r.get("saldo_atual") or 0),
+                "ativo": r.get("ativo"),
+                "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
+            })
+    return jsonify({"ok": True, "clientes": items})
+
+
+@bp.post("/clientes")
+def criar_cliente():
+    """Cadastra novo cliente (acessa o portal)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    nome = str(data.get("nome") or "").strip()
+    senha = str(data.get("senha") or "").strip()
+    telefone = str(data.get("telefone") or "").strip()
+    empresa_id = data.get("empresa_id")
+
+    if not username or not nome or not senha or not empresa_id:
+        return _err("username, nome, senha e empresa_id obrigatorios", 400)
+
+    existente = usuarios_repo.get_by_username(username)
+    if existente:
+        return _err("username_ja_existe", 409)
+
+    novo = usuarios_repo.create(
+        username=username, nome=nome, perfil="EMPRESA",
+        empresa_id=empresa_id, telefone=telefone or None,
+    )
+    auth_service.definir_senha(novo["id"], senha)
+
+    return jsonify({"ok": True, "cliente": {
+        "id": novo["id"],
+        "username": novo.get("username"),
+        "nome": novo.get("nome"),
+        "empresa_id": novo.get("empresa_id"),
+    }}), 201
+
+
+@bp.put("/clientes/<int:cliente_id>")
+def atualizar_cliente(cliente_id: int):
+    """Atualiza cliente."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    campos = {}
+    for k in ("nome", "telefone", "empresa_id", "ativo"):
+        if k in data:
+            campos[k] = data[k]
+    senha = data.get("senha")
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        if campos:
+            sets = [f"{k} = %s" for k in campos]
+            params = list(campos.values()) + [cliente_id]
+            cur.execute(
+                f"UPDATE usuarios SET {', '.join(sets)} WHERE id = %s AND perfil IN ('EMPRESA','CLIENTE') RETURNING *",
+                params,
+            )
+            row = cur.fetchone()
+            if not row:
+                return _err("cliente_nao_encontrado", 404)
+        if senha:
+            auth_service.definir_senha(cliente_id, str(senha))
+
+    return jsonify({"ok": True})
+
+
+@bp.delete("/clientes/<int:cliente_id>")
+def desativar_cliente(cliente_id: int):
+    """Desativa cliente."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE usuarios SET ativo = FALSE WHERE id = %s AND perfil IN ('EMPRESA','CLIENTE') RETURNING id",
+            (cliente_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return _err("cliente_nao_encontrado", 404)
+
+    return jsonify({"ok": True})
