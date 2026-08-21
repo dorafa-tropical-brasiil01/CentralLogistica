@@ -281,8 +281,9 @@
       <div class="qr-box">
         <div style="font-weight:800;font-size:15px;margin-bottom:8px">Pague o QR Code abaixo</div>
         <div style="font-size:24px;font-weight:900;color:var(--accent-2)" id="qrValor">—</div>
+        <img id="qrImage" src="" alt="QR Code PIX" style="max-width:240px;width:100%;margin:12px auto;display:none;border-radius:12px;border:1px solid var(--border)" />
         <div class="qr-code" id="qrCode">—</div>
-        <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Copie o código acima e cole no app do seu banco</div>
+        <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Escaneie o QR Code ou copie o código acima e cole no app do seu banco</div>
         <div class="qr-status qr-pending" id="qrStatus">⏳ Aguardando pagamento...</div>
         <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="checkRecargaStatus()">Verificar pagamento</button>
       </div>
@@ -458,7 +459,15 @@ async function gerarRecarga() {
     const rec = j.recarga;
     recargaUuid = rec.uuid;
     document.getElementById('qrValor').textContent = money(valor);
-    document.getElementById('qrCode').textContent = rec.qr_code || 'QR Code indisponível (modo mock)';
+    document.getElementById('qrCode').textContent = rec.qr_code || 'QR Code indisponível';
+    // Mostra imagem do QR Code se disponível
+    const qrImg = document.getElementById('qrImage');
+    if (rec.qr_code_image_url) {
+      qrImg.src = rec.qr_code_image_url;
+      qrImg.style.display = 'block';
+    } else {
+      qrImg.style.display = 'none';
+    }
     document.getElementById('qrContainer').classList.remove('hidden');
     document.getElementById('recFormActions').classList.add('hidden');
     document.getElementById('qrStatus').className = 'qr-status qr-pending';
