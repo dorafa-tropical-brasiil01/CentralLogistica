@@ -14,13 +14,7 @@
       --border: #e2e8f0; --shadow: 0 1px 3px rgba(0,0,0,.08); --shadow-lg: 0 10px 40px rgba(10,37,64,.12);
       --radius: 14px; --radius-sm: 10px;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #050c14; --surface: #0b1623; --surface-2: #111f2f;
-        --text: #e8f3fd; --text-2: #94a3b8; --text-3: #64748b;
-        --border: #1e2d3d; --shadow: 0 8px 24px rgba(0,0,0,.35); --shadow-lg: 0 20px 48px rgba(0,0,0,.45);
-      }
-    }
+    /* Dark mode desativado — causa texto branco em fundo branco em alguns elementos */
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }

@@ -21,13 +21,7 @@
       --border: #e2e8f0; --shadow: 0 8px 24px rgba(10,37,64,.08); --shadow-lg: 0 20px 48px rgba(10,37,64,.12);
       --radius: 18px; --radius-sm: 12px;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #050c14; --surface: #0b1623; --surface-2: #111f2f;
-        --text: #e8f3fd; --text-2: #94a3b8; --text-3: #64748b;
-        --border: #1e2d3d; --shadow: 0 8px 24px rgba(0,0,0,.35); --shadow-lg: 0 20px 48px rgba(0,0,0,.45);
-      }
-    }
+    /* Dark mode desativado — causa texto branco em fundo branco em alguns elementos */
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.35; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
@@ -168,14 +162,12 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <button class="btn-ghost" id="pushBtn" onclick="togglePush()" style="display:none">🔔 Ativar notificações</button>
+          <button class="btn-ghost" id="pushBtn" onclick="togglePush()">🔔 Carregando...</button>
           <button class="btn-ghost refresh-btn" onclick="carregarDados()">↻ Atualizar</button>
           <button class="btn-ghost" onclick="doLogout()">Sair</button>
         </div>
       </div>
     </header>
-
-    </div>
 
     <div id="entregadorView" class="main" style="grid-template-columns:1fr; overflow-y:auto; display:none;">
       <div class="sidebar" style="border-right:0;">
@@ -522,7 +514,13 @@
 
     // --- Carregar dados (despachador) ---
     async function carregarDados() {
-      if (!currentUser || currentUser.perfil === 'ENTREGADOR') return;
+      if (!currentUser) return;
+      if (currentUser.perfil === 'ENTREGADOR') {
+        renderDisponiveis();
+        renderEntregadorView();
+        renderSalario();
+        return;
+      }
       try {
         const [r1, r2, r3] = await Promise.all([
           api('/ordens?status=PENDENTE'),
@@ -836,16 +834,18 @@
       const btn = document.getElementById('pushBtn');
       if (!btn) return;
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        btn.style.display = 'none';
+        btn.style.display = 'inline-block';
+        btn.textContent = '🔔 Push não suportado';
+        btn.disabled = true;
         return;
       }
       try {
         const r = await api('/push/vapid-public-key');
-        if (!r.ok) { btn.style.display = 'none'; return; }
+        if (!r.ok) { console.error('[Push] vapid endpoint falhou:', r.status); btn.style.display = 'inline-block'; btn.textContent = '🔔 Push indisponível'; return; }
         const j = await r.json();
-        if (!j.public_key) { btn.style.display = 'none'; return; }
+        if (!j.public_key) { console.error('[Push] sem VAPID key'); btn.style.display = 'inline-block'; btn.textContent = '🔔 Push indisponível'; return; }
         btn.style.display = 'inline-block';
-        // Verifica se já está inscrito
+        // Aguarda service worker estar pronto
         const reg = await navigator.serviceWorker.ready;
         const existing = await reg.pushManager.getSubscription();
         if (existing) {
@@ -868,7 +868,7 @@
               await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
               btn.textContent = '🔔 Notificações ativas';
               btn.classList.add('active');
-            } catch {}
+            } catch (err) { console.error('[Push] auto-inscricao falhou:', err); }
           } else if (Notification.permission === 'default') {
             // Pede permissão automaticamente no primeiro login
             try {
@@ -885,10 +885,10 @@
                 showToast('Notificações ativadas!');
                 setTimeout(() => api('/push/teste', { method: 'POST' }), 500);
               }
-            } catch {}
+            } catch (err) { console.error('[Push] auto-inscricao falhou:', err); }
           }
         }
-      } catch { btn.style.display = 'none'; }
+      } catch (err) { console.error('[Push] init falhou:', err); btn.style.display = 'inline-block'; btn.textContent = '🔔 Push indisponível'; }
     }
 
     async function togglePush() {
@@ -937,7 +937,11 @@
 
     // --- Init ---
     if ('serviceWorker' in navigator && location.protocol.includes('http')) {
-      navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/static/sw.js').then(reg => {
+        console.log('[SW] registrado com sucesso');
+      }).catch(err => {
+        console.error('[SW] erro ao registrar:', err);
+      });
     }
     if (token) {
       api('/me').then(r => r.ok ? r.json() : null).then(j => {
