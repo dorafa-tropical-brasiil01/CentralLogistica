@@ -550,11 +550,15 @@
 
     // --- Carregar dados (despachador) ---
     async function carregarDados() {
-      if (!currentUser) return;
+      if (!currentUser) { showToast('Faça login primeiro'); return; }
+      showToast('Atualizando...');
       if (currentUser.perfil === 'ENTREGADOR') {
-        renderDisponiveis();
-        renderEntregadorView();
-        renderSalario();
+        try {
+          await Promise.all([renderDisponiveis(), renderEntregadorView(), renderSalario()]);
+          showToast('Atualizado!');
+        } catch (err) {
+          if (err.message !== 'nao_autenticado') showToast('Erro ao atualizar: ' + err.message);
+        }
         return;
       }
       try {
@@ -974,14 +978,28 @@
           const r = await api('/push/vapid-public-key');
           const j = await r.json();
           if (!j.public_key) { showToast('Push indisponível (sem VAPID)'); return; }
+          showToast('Registrando service worker...');
+          // Garante que o SW está registrado
+          await navigator.serviceWorker.register('/static/sw.js');
+          // Aguarda SW ficar pronto com timeout de 5s
+          let reg;
+          try {
+            reg = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_sw')), 5000))
+            ]);
+          } catch (swErr) {
+            showToast('Service Worker não respondeu. Tente limpar cache.');
+            return;
+          }
           showToast('Inscrevendo...');
-          const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(j.public_key),
           });
           pushSubscription = sub;
-          await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
+          const inscR = await api('/push/inscrever', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
+          if (!inscR.ok) { showToast('Erro ao salvar inscrição'); return; }
           btn.textContent = '🔔 Notificações ativas';
           btn.classList.add('active');
           showToast('Notificações ativadas!');
@@ -1001,11 +1019,20 @@
     }
 
     // --- Init ---
+    console.log('[REMO] PWA versão 2025-08-22');
     if ('serviceWorker' in navigator && location.protocol.includes('http')) {
-      navigator.serviceWorker.register('/static/sw.js').then(reg => {
-        console.log('[SW] registrado com sucesso');
-      }).catch(err => {
-        console.error('[SW] erro ao registrar:', err);
+      // Limpa SWs antigos antes de registrar o novo
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => {
+          console.log('[SW] removendo SW antigo:', r.active && r.active.scriptURL);
+          r.unregister();
+        });
+      }).then(() => {
+        navigator.serviceWorker.register('/static/sw.js?v4').then(reg => {
+          console.log('[SW] registrado com sucesso');
+        }).catch(err => {
+          console.error('[SW] erro ao registrar:', err);
+        });
       });
     }
     if (token) {
