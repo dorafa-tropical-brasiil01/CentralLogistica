@@ -434,19 +434,20 @@
 <div class="modal-bg" id="areaModal">
   <div class="modal" style="width:min(900px, 96vw); max-height:92vh">
     <h3 id="areaModalTitle">Nova área de cobertura</h3>
-    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Digite a cidade para centralizar o mapa, depois desenhe o polígono da zona de entrega clicando no mapa. Atribua a taxa para essa zona.</p>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Busque por cidade ou bairro, desenhe a zona no mapa ou importe os limites do bairro automaticamente.</p>
     <input type="hidden" id="areaId" />
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="form-group" style="margin:0"><label>Nome da zona</label><input id="areaNome" type="text" placeholder="Centro" /></div>
-      <div class="form-group" style="margin:0"><label>Cidade</label><input id="areaCidadeNome" type="text" placeholder="Goiânia" onblur="buscarCidadeMapa()" /></div>
+      <div class="form-group" style="margin:0"><label>Cidade/Bairro</label><input id="areaCidadeNome" type="text" placeholder="Goiânia ou Setor Centro" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarLocalMapa()}" /></div>
       <div class="form-group" style="margin:0"><label>Taxa (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
       <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa"></select></div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="buscarCidadeMapa()">🔍 Buscar cidade</button>
-      <button class="btn btn-ghost btn-sm" onclick="iniciarDesenho()">✏️ Desenhar zona</button>
-      <button class="btn btn-ghost btn-sm" onclick="limparDesenho()">🗑️ Limpar desenho</button>
-      <span id="areaVertCount" style="font-size:12px;color:var(--text-3);align-self:center"></span>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-ghost btn-sm" onclick="buscarLocalMapa()">🔍 Buscar local</button>
+      <button class="btn btn-ghost btn-sm" onclick="importarBairro()">📥 Importar limites do bairro</button>
+      <button class="btn btn-ghost btn-sm" onclick="iniciarDesenho()">✏️ Desenhar manualmente</button>
+      <button class="btn btn-ghost btn-sm" onclick="limparDesenho()">🗑️ Limpar</button>
+      <span id="areaVertCount" style="font-size:12px;color:var(--text-3);margin-left:auto"></span>
     </div>
     <div id="areaMap" style="width:100%;height:380px;border-radius:12px;border:1px solid var(--border);margin-bottom:14px"></div>
     <div class="modal-actions">
@@ -757,83 +758,133 @@ async function loadAreas() {
   } catch { toast('Erro ao carregar áreas'); }
 }
 
-// --- Mapa de área (Leaflet.draw) ---
+// --- Mapa de área (desenho de polígono) ---
 let areaMap = null;
-let areaDrawControl = null;
 let areaDrawnLayer = null;
 let areaPolygon = null;
+let areaDrawHandler = null;
 
 function initAreaMap() {
   if (areaMap) { areaMap.remove(); areaMap = null; }
-  areaMap = L.map('areaMap').setView([-16.6869, -49.2648], 12); // Goiânia padrão
+  areaMap = L.map('areaMap', { zoomControl: true }).setView([-16.6869, -49.2648], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: 'OpenStreetMap', maxZoom: 19
   }).addTo(areaMap);
 
-  // Camada para desenho
   areaDrawnLayer = new L.FeatureGroup();
   areaMap.addLayer(areaDrawnLayer);
 
-  // Controle de desenho (apenas polígono)
-  areaDrawControl = new L.Control.Draw({
-    edit: { featureGroup: areaDrawnLayer, edit: false, remove: true },
-    draw: {
-      polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#00d4aa', weight: 3 } },
-      rectangle: false, circle: false, marker: false, circlemarker: false, polyline: false
-    }
-  });
-  areaMap.addControl(areaDrawControl);
-
+  // Evento: quando um polígono é desenhado com sucesso
   areaMap.on(L.Draw.Event.CREATED, function(e) {
     areaDrawnLayer.clearLayers();
     areaDrawnLayer.addLayer(e.layer);
     areaPolygon = e.layer;
     const latlngs = e.layer.getLatLngs()[0];
-    document.getElementById('areaVertCount').textContent = `${latlngs.length} pontos definidos`;
+    document.getElementById('areaVertCount').textContent = latlngs.length + ' pontos definidos';
+    toast('Zona desenhada com ' + latlngs.length + ' pontos');
   });
 
-  areaMap.on(L.Draw.Event.EDITED, function(e) {
-    e.layers.eachLayer(l => { areaPolygon = l; });
-  });
-
-  areaMap.on(L.Draw.Event.DELETED, function() {
-    areaPolygon = null;
-    document.getElementById('areaVertCount').textContent = '';
+  // Evento: quando o desenho é cancelado
+  areaMap.on(L.Draw.Event.DRAWSTART, function() {
+    document.getElementById('areaVertCount').textContent = 'Clique no mapa para adicionar pontos...';
   });
 
   setTimeout(() => areaMap.invalidateSize(), 200);
 }
 
-function buscarCidadeMapa() {
-  const cidade = document.getElementById('areaCidadeNome').value.trim();
-  if (!cidade) { toast('Digite uma cidade'); return; }
-  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(cidade + ', Brasil') + '&limit=1')
+function buscarLocalMapa() {
+  const q = document.getElementById('areaCidadeNome').value.trim();
+  if (!q) { toast('Digite uma cidade ou bairro'); return; }
+  if (!areaMap) { toast('Mapa não inicializado'); return; }
+  document.getElementById('areaVertCount').textContent = 'Buscando...';
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=1&addressdetails=1')
     .then(r => r.json())
     .then(data => {
       if (data && data.length > 0) {
         const r = data[0];
         areaMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
-        toast('Mapa centralizado em ' + cidade);
+        document.getElementById('areaVertCount').textContent = 'Mapa em ' + (r.display_name || q).substring(0, 50);
+        toast('Mapa centralizado');
       } else {
-        toast('Cidade não encontrada');
+        document.getElementById('areaVertCount').textContent = '';
+        toast('Local não encontrado');
       }
     })
-    .catch(() => toast('Erro ao buscar cidade'));
+    .catch(() => { toast('Erro ao buscar'); document.getElementById('areaVertCount').textContent = ''; });
+}
+
+function importarBairro() {
+  const q = document.getElementById('areaCidadeNome').value.trim();
+  if (!q) { toast('Digite um bairro e cidade (ex: Setor Centro, Goiânia)'); return; }
+  if (!areaMap) { toast('Mapa não inicializado'); return; }
+  document.getElementById('areaVertCount').textContent = 'Importando limites...';
+  // Nominatim com polygon_geojson=1 retorna os limites do bairro
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=1&polygon_geojson=1')
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.length > 0) {
+        const r = data[0];
+        const geojson = r.geojson;
+        if (!geojson) { toast('Limites não disponíveis para este local'); document.getElementById('areaVertCount').textContent = ''; return; }
+
+        // Centraliza no local
+        areaMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
+
+        // Converte GeoJSON para LatLngs do Leaflet
+        let coords = [];
+        if (geojson.type === 'Polygon') {
+          coords = geojson.coordinates[0].map(c => [c[1], c[0]]); // [lng,lat] → [lat,lng]
+        } else if (geojson.type === 'MultiPolygon') {
+          // Pega o maior polígono
+          let biggest = geojson.coordinates[0][0];
+          for (const poly of geojson.coordinates) {
+            if (poly[0].length > biggest.length) biggest = poly[0];
+          }
+          coords = biggest.map(c => [c[1], c[0]]);
+        }
+
+        if (coords.length < 3) { toast('Polígono inválido'); document.getElementById('areaVertCount').textContent = ''; return; }
+
+        // Desenha o polígono no mapa
+        areaDrawnLayer.clearLayers();
+        const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+        areaDrawnLayer.addLayer(poly);
+        areaPolygon = poly;
+        areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
+        document.getElementById('areaVertCount').textContent = coords.length + ' pontos importados';
+        toast('Limites importados: ' + coords.length + ' pontos');
+
+        // Preenche o nome se vazio
+        if (!document.getElementById('areaNome').value.trim()) {
+          const parts = q.split(',');
+          document.getElementById('areaNome').value = parts[0].trim();
+        }
+      } else {
+        toast('Bairro não encontrado');
+        document.getElementById('areaVertCount').textContent = '';
+      }
+    })
+    .catch(() => { toast('Erro ao importar'); document.getElementById('areaVertCount').textContent = ''; });
 }
 
 function iniciarDesenho() {
-  if (!areaMap) return;
-  const handler = new L.Draw.Polygon(areaMap, {
-    allowIntersection: false, showArea: true,
+  if (!areaMap) { toast('Mapa não inicializado'); return; }
+  // Cancela desenho anterior se existir
+  if (areaDrawHandler) { areaDrawHandler.disable(); }
+  // Cria novo handler de polígono
+  areaDrawHandler = new L.Draw.Polygon(areaMap, {
+    allowIntersection: false,
+    showArea: true,
     shapeOptions: { color: '#00d4aa', weight: 3, fillOpacity: 0.2 }
   });
-  handler.enable();
-  toast('Clique no mapa para desenhar a zona. Clique no primeiro ponto para fechar.');
+  areaDrawHandler.enable();
+  toast('Clique no mapa para traçar a zona. Clique no primeiro ponto para fechar.');
 }
 
 function limparDesenho() {
   if (areaDrawnLayer) areaDrawnLayer.clearLayers();
   areaPolygon = null;
+  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
   document.getElementById('areaVertCount').textContent = '';
 }
 
@@ -850,7 +901,7 @@ function renderPolygonOnMap(coords) {
   areaDrawnLayer.addLayer(poly);
   areaPolygon = poly;
   areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
-  document.getElementById('areaVertCount').textContent = `${coords.length} pontos definidos`;
+  document.getElementById('areaVertCount').textContent = coords.length + ' pontos definidos';
 }
 
 function openAreaModal() {
@@ -861,9 +912,10 @@ function openAreaModal() {
   document.getElementById('areaTaxa').value = '';
   fillEmpresaSelect('areaEmpresa');
   areaPolygon = null;
+  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
   document.getElementById('areaVertCount').textContent = '';
   document.getElementById('areaModal').classList.add('open');
-  setTimeout(() => { initAreaMap(); }, 100);
+  setTimeout(() => { initAreaMap(); }, 150);
 }
 
 async function editArea(id) {
@@ -884,12 +936,13 @@ async function editArea(id) {
       if (a.poligono && a.poligono.length > 2) {
         renderPolygonOnMap(a.poligono);
       }
-    }, 100);
+    }, 150);
   } catch { toast('Erro'); }
 }
 
 function closeAreaModal() {
   closeModal('areaModal');
+  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
   if (areaMap) { areaMap.remove(); areaMap = null; }
   areaPolygon = null;
 }
