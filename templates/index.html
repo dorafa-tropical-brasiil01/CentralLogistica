@@ -979,21 +979,31 @@
           const j = await r.json();
           if (!j.public_key) { showToast('Push indisponível (sem VAPID)'); return; }
           showToast('Registrando service worker...');
-          // Garante que o SW está registrado
-          await navigator.serviceWorker.register('/static/sw.js');
-          // Aguarda SW ficar pronto com timeout de 5s
-          let reg;
+          // Registra SW se ainda não estiver
+          const reg = await navigator.serviceWorker.register('/static/sw.js');
+          // Força ativação imediata
+          if (reg.waiting) { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+          if (reg.installing) {
+            await new Promise(resolve => {
+              reg.installing.addEventListener('statechange', () => {
+                if (reg.active) resolve();
+              });
+              setTimeout(resolve, 3000);
+            });
+          }
+          // Aguarda ready com timeout
+          let swReg;
           try {
-            reg = await Promise.race([
+            swReg = await Promise.race([
               navigator.serviceWorker.ready,
-              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_sw')), 5000))
+              new Promise(r => setTimeout(() => r(reg), 2000))
             ]);
           } catch (swErr) {
-            showToast('Service Worker não respondeu. Tente limpar cache.');
-            return;
+            swReg = reg;
           }
+          if (!swReg) { showToast('SW não disponível'); return; }
           showToast('Inscrevendo...');
-          const sub = await reg.pushManager.subscribe({
+          const sub = await swReg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(j.public_key),
           });
@@ -1019,20 +1029,12 @@
     }
 
     // --- Init ---
-    console.log('[REMO] PWA versão 2025-08-22');
+    console.log('[REMO] PWA versão 2025-08-22b');
     if ('serviceWorker' in navigator && location.protocol.includes('http')) {
-      // Limpa SWs antigos antes de registrar o novo
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => {
-          console.log('[SW] removendo SW antigo:', r.active && r.active.scriptURL);
-          r.unregister();
-        });
-      }).then(() => {
-        navigator.serviceWorker.register('/static/sw.js?v4').then(reg => {
-          console.log('[SW] registrado com sucesso');
-        }).catch(err => {
-          console.error('[SW] erro ao registrar:', err);
-        });
+      navigator.serviceWorker.register('/static/sw.js').then(reg => {
+        console.log('[SW] registrado, scope:', reg.scope);
+      }).catch(err => {
+        console.error('[SW] erro ao registrar:', err);
       });
     }
     if (token) {
