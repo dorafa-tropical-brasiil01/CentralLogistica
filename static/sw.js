@@ -1,4 +1,4 @@
-const CACHE_NAME = 'remo-pwa-v3';
+const CACHE_NAME = 'remo-pwa-v4';
 const ASSETS = ['/', '/static/manifest.json', '/static/icon.svg'];
 
 self.addEventListener('install', e => {
@@ -7,23 +7,26 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))));
-  self.clients.claim();
+  e.waitUntil(
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+    )).then(() => self.clients.claim())
+  );
 });
 
+// Network-first: sempre busca a versão nova, usa cache só offline
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(response => {
+    fetch(e.request)
+      .then(response => {
         if (response && response.status === 200 && e.request.url.startsWith(self.location.origin)) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(c => c.put(e.request, clone)).catch(() => {});
         }
         return response;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+      })
+      .catch(() => caches.match(e.request).then(cached => cached || Response.error()))
   );
 });
 
@@ -34,8 +37,8 @@ self.addEventListener('push', e => {
   const title = data.title || 'REMO Logística';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/static/icon-192.png',
-    badge: data.badge || '/static/badge-72.png',
+    icon: data.icon || '/static/logo-remo.png',
+    badge: data.badge || '/static/logo-remo.png',
     tag: data.tag || 'remo-ordem',
     requireInteraction: data.requireInteraction !== false,
     data: data.data || {},

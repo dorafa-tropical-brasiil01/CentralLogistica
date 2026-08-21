@@ -7,9 +7,9 @@
   "theme_color": "#0a2540",
   "icons": [
     {
-      "src": "/static/icon.svg",
+      "src": "/static/logo-remo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

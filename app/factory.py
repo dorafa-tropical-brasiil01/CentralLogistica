@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, make_response, render_template, request, send_from_directory
 
 from app.core import config
 from app.migracoes.runner import ensure_schema
@@ -37,17 +37,29 @@ def create_app() -> Flask:
     # PWA — página do entregador
     @app.route("/")
     def index_page():
-        return render_template("index.html")
+        resp = make_response(render_template("index.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
     # Admin — painel administrativo
     @app.route("/admin")
     def admin_page():
-        return render_template("admin/index.html")
+        resp = make_response(render_template("admin/index.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
     # Portal — área do cliente
     @app.route("/portal")
     def portal_page():
-        return render_template("portal/index.html")
+        resp = make_response(render_template("portal/index.html"))
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
 
     @app.route("/health")
     def health():
