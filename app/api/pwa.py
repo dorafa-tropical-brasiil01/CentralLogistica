@@ -452,7 +452,7 @@ def push_teste():
         dados={"tipo": "teste"},
     )
     if enviadas == 0:
-        return jsonify({"ok": False, "error": "sem_inscricoes_ou_push_desabilitado"}), 404
+        return jsonify({"ok": False, "error": "sem_inscricoes_validas", "msg": "Inscrição push não encontrada ou expirada. Reative as notificações no botão 🔔."}), 404
     return jsonify({"ok": True, "enviadas": enviadas})
 
 
