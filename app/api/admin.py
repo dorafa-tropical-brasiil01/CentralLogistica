@@ -909,10 +909,69 @@ def listar_empresas():
 
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, nome, cnpj, ativo FROM empresas ORDER BY nome")
-        items = [{"id": r["id"], "nome": r["nome"], "cnpj": r.get("cnpj"), "ativo": r.get("ativo")}
-                 for r in (dict(x) for x in cur.fetchall())]
+        cur.execute("SELECT id, nome, cnpj, ativo, config FROM empresas ORDER BY nome")
+        items = []
+        for r in (dict(x) for x in cur.fetchall()):
+            cfg = r.get("config")
+            if isinstance(cfg, str):
+                import json as _json
+                try: cfg = _json.loads(cfg)
+                except Exception: cfg = {}
+            cfg = cfg or {}
+            items.append({
+                "id": r["id"],
+                "nome": r["nome"],
+                "cnpj": r.get("cnpj"),
+                "ativo": r.get("ativo"),
+                "comissao_entregador_pct": float(cfg.get("comissao_entregador_pct", 70.0)),
+            })
     return jsonify({"ok": True, "empresas": items})
+
+
+@bp.put("/empresas/<empresa_id>/comissao")
+def atualizar_comissao(empresa_id: str):
+    """Atualiza o percentual de comissão do entregador para uma empresa."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    pct = data.get("comissao_entregador_pct")
+    if pct is None:
+        return _err("comissao_entregador_pct obrigatorio", 400)
+
+    try:
+        pct = float(pct)
+    except (TypeError, ValueError):
+        return _err("comissao_entregador_pct deve ser numero", 400)
+
+    if pct < 0 or pct > 100:
+        return _err("comissao_entregador_pct deve estar entre 0 e 100", 400)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        # Busca config atual
+        cur.execute("SELECT config FROM empresas WHERE id = %s", (empresa_id,))
+        row = cur.fetchone()
+        if not row:
+            return _err("empresa_nao_encontrada", 404)
+
+        import json as _json
+        cfg = row["config"]
+        if isinstance(cfg, str):
+            try: cfg = _json.loads(cfg)
+            except Exception: cfg = {}
+        cfg = cfg or {}
+        cfg["comissao_entregador_pct"] = pct
+
+        cur.execute(
+            "UPDATE empresas SET config = %s WHERE id = %s RETURNING id",
+            (_json.dumps(cfg), empresa_id),
+        )
+        if not cur.fetchone():
+            return _err("empresa_nao_encontrada", 404)
+
+    return jsonify({"ok": True, "comissao_entregador_pct": pct})
 
 
 # ============================================================

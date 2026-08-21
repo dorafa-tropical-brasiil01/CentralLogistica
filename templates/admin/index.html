@@ -353,6 +353,11 @@
 
       <!-- MÓDULO 7: ENTREGADORES -->
       <div class="module" id="mod-entregadores">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title" style="margin-bottom:8px">Configuração de comissão</div>
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:12px">Percentual da taxa de entrega que vai para o entregador. Padrão: 70%.</p>
+          <div id="comissaoConfig" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"></div>
+        </div>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <div class="card-title" style="margin:0">Entregadores cadastrados</div>
@@ -771,6 +776,7 @@ async function delArea(id) {
 
 // ENTREGADORES
 async function loadEntregadores() {
+  loadComissaoConfig();
   try {
     const r = await api('/entregadores');
     const j = await r.json();
@@ -778,6 +784,34 @@ async function loadEntregadores() {
     if (!j.entregadores.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Nenhum entregador cadastrado</td></tr>'; return; }
     tb.innerHTML = j.entregadores.map(e => `<tr><td>${e.nome}</td><td>${e.username}</td><td>${e.telefone || '—'}</td><td>${e.corridas_ativas}</td><td>${e.total_entregues}</td><td style="font-weight:700;color:var(--accent-2)">${money(e.comissao_pendente)}</td><td><span class="badge ${e.ativo ? 'badge-success' : 'badge-pending'}">${e.ativo ? 'Ativo' : 'Inativo'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editEnt(${e.id})">Editar</button> <button class="btn btn-danger btn-sm" onclick="delEnt(${e.id})">Desativar</button></td></tr>`).join('');
   } catch { toast('Erro ao carregar entregadores'); }
+}
+
+async function loadComissaoConfig() {
+  try {
+    const r = await api('/empresas');
+    const j = await r.json();
+    const el = document.getElementById('comissaoConfig');
+    if (!j.empresas.length) { el.innerHTML = '<span style="color:var(--text-3)">Nenhuma empresa cadastrada</span>'; return; }
+    el.innerHTML = j.empresas.map(e => `
+      <div class="filter-group">
+        <label>${e.nome}</label>
+        <div style="display:flex;gap:4px;align-items:center">
+          <input type="number" min="0" max="100" step="1" value="${e.comissao_entregador_pct}" id="comissao_${e.id}" style="width:80px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px" />
+          <span style="font-weight:700;color:var(--text-2)">%</span>
+          <button class="btn btn-accent btn-sm" onclick="saveComissao('${e.id}')">Salvar</button>
+        </div>
+      </div>
+    `).join('');
+  } catch { toast('Erro ao carregar config de comissão'); }
+}
+
+async function saveComissao(empresaId) {
+  const val = document.getElementById('comissao_' + empresaId).value;
+  try {
+    const r = await api('/empresas/' + empresaId + '/comissao', { method: 'PUT', body: JSON.stringify({ comissao_entregador_pct: parseFloat(val) }) });
+    if (r.ok) { toast('Comissão atualizada para ' + val + '%'); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
 }
 
 function openEntModal() {
