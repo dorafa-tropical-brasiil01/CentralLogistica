@@ -6,7 +6,6 @@
   <title>Admin — REMO Central Logística</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.draw@1.0.4/dist/leaflet.draw.css" />
   <script src="https://unpkg.com/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -434,22 +433,23 @@
 <div class="modal-bg" id="areaModal">
   <div class="modal" style="width:min(900px, 96vw); max-height:92vh">
     <h3 id="areaModalTitle">Nova área de cobertura</h3>
-    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Busque por cidade ou bairro, desenhe a zona no mapa ou importe os limites do bairro automaticamente.</p>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">Busque por bairro/setor, importe os limites automaticamente ou desenhe a zona manualmente no mapa.</p>
     <input type="hidden" id="areaId" />
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="form-group" style="margin:0"><label>Nome da zona</label><input id="areaNome" type="text" placeholder="Centro" /></div>
-      <div class="form-group" style="margin:0"><label>Cidade/Bairro</label><input id="areaCidadeNome" type="text" placeholder="Goiânia ou Setor Centro" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarLocalMapa()}" /></div>
+      <div class="form-group" style="margin:0"><label>Nome da zona</label><input id="areaNome" type="text" placeholder="Setor Centro" /></div>
+      <div class="form-group" style="margin:0"><label>Bairro / Cidade</label><input id="areaCidadeNome" type="text" placeholder="Setor Centro, Goiânia" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarLocalMapa()}" /></div>
       <div class="form-group" style="margin:0"><label>Taxa (R$)</label><input id="areaTaxa" type="number" step="0.50" placeholder="6.00" /></div>
       <div class="form-group" style="margin:0"><label>Empresa</label><select id="areaEmpresa"></select></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-ghost btn-sm" onclick="buscarLocalMapa()">🔍 Buscar local</button>
-      <button class="btn btn-ghost btn-sm" onclick="importarBairro()">📥 Importar limites do bairro</button>
-      <button class="btn btn-ghost btn-sm" onclick="iniciarDesenho()">✏️ Desenhar manualmente</button>
+      <button class="btn btn-ghost btn-sm" onclick="buscarLocalMapa()">🔍 Buscar</button>
+      <button class="btn btn-ghost btn-sm" onclick="importarBairro()">📥 Importar bairro</button>
+      <button class="btn btn-ghost btn-sm" id="btnDesenhar" onclick="toggleDesenho()">✏️ Desenhar</button>
       <button class="btn btn-ghost btn-sm" onclick="limparDesenho()">🗑️ Limpar</button>
       <span id="areaVertCount" style="font-size:12px;color:var(--text-3);margin-left:auto"></span>
     </div>
-    <div id="areaMap" style="width:100%;height:380px;border-radius:12px;border:1px solid var(--border);margin-bottom:14px"></div>
+    <div id="areaMap" style="width:100%;height:380px;border-radius:12px;border:1px solid var(--border);margin-bottom:14px;cursor:crosshair"></div>
+    <div id="areaDica" style="font-size:12px;color:var(--info);margin-bottom:10px;display:none;padding:8px 12px;background:#eff6ff;border-radius:8px"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeAreaModal()">Cancelar</button>
       <button class="btn btn-accent" onclick="saveArea()">Salvar zona</button>
@@ -492,7 +492,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.draw@1.0.4/dist/leaflet.draw.js"></script>
 <script>
 const API = '/api/admin';
 let token = sessionStorage.getItem('remo_admin_token') || '';
@@ -758,11 +757,14 @@ async function loadAreas() {
   } catch { toast('Erro ao carregar áreas'); }
 }
 
-// --- Mapa de área (desenho de polígono) ---
+// --- Mapa de área (desenho próprio + importação Nominatim) ---
 let areaMap = null;
 let areaDrawnLayer = null;
 let areaPolygon = null;
-let areaDrawHandler = null;
+let areaMarkers = [];
+let areaDrawPoints = [];
+let areaDrawing = false;
+let areaMapClickHandler = null;
 
 function initAreaMap() {
   if (areaMap) { areaMap.remove(); areaMap = null; }
@@ -774,22 +776,108 @@ function initAreaMap() {
   areaDrawnLayer = new L.FeatureGroup();
   areaMap.addLayer(areaDrawnLayer);
 
-  // Evento: quando um polígono é desenhado com sucesso
-  areaMap.on(L.Draw.Event.CREATED, function(e) {
-    areaDrawnLayer.clearLayers();
-    areaDrawnLayer.addLayer(e.layer);
-    areaPolygon = e.layer;
-    const latlngs = e.layer.getLatLngs()[0];
-    document.getElementById('areaVertCount').textContent = latlngs.length + ' pontos definidos';
-    toast('Zona desenhada com ' + latlngs.length + ' pontos');
+  // Click handler para desenho manual
+  areaMap.on('click', function(e) {
+    if (!areaDrawing) return;
+    addDrawPoint(e.latlng);
   });
 
-  // Evento: quando o desenho é cancelado
-  areaMap.on(L.Draw.Event.DRAWSTART, function() {
-    document.getElementById('areaVertCount').textContent = 'Clique no mapa para adicionar pontos...';
+  // Duplo clique para fechar polígono
+  areaMap.on('dblclick', function(e) {
+    if (!areaDrawing || areaDrawPoints.length < 3) return;
+    e.originalEvent.stopPropagation();
+    e.originalEvent.preventDefault();
+    fecharPoligono();
   });
 
   setTimeout(() => areaMap.invalidateSize(), 200);
+}
+
+function addDrawPoint(latlng) {
+  areaDrawPoints.push(latlng);
+  // Adiciona marcador no ponto
+  const marker = L.circleMarker(latlng, { radius: 5, color: '#00d4aa', fillColor: '#00d4aa', fillOpacity: 1 }).addTo(areaMap);
+  areaMarkers.push(marker);
+
+  // Atualiza linha temporária
+  atualizarLinhaTemp();
+
+  // Se tem 3+ pontos, mostra opção de fechar clicando no primeiro
+  if (areaDrawPoints.length >= 3) {
+    const first = areaDrawPoints[0];
+    const dist = areaMap.distance(latlng, first);
+    if (dist < 50) { // dentro de 50m do primeiro ponto
+      fecharPoligono();
+      return;
+    }
+  }
+
+  document.getElementById('areaVertCount').textContent = areaDrawPoints.length + ' pontos — clique no 1º ponto ou duplo clique para fechar';
+}
+
+function atualizarLinhaTemp() {
+  // Remove linha temporária anterior
+  if (window._areaTempLine) { areaMap.removeLayer(window._areaTempLine); }
+  if (window._areaTempLine2) { areaMap.removeLayer(window._areaTempLine2); }
+  if (areaDrawPoints.length < 2) return;
+
+  // Linha conectando os pontos
+  window._areaTempLine = L.polyline(areaDrawPoints, { color: '#00d4aa', weight: 2, dashArray: '5,8' }).addTo(areaMap);
+
+  // Linha do último ponto até o mouse (preview) — conecta ao primeiro se tem 3+
+  if (areaDrawPoints.length >= 3) {
+    window._areaTempLine2 = L.polyline([areaDrawPoints[areaDrawPoints.length - 1], areaDrawPoints[0]], { color: '#00d4aa', weight: 1, opacity: 0.4, dashArray: '3,6' }).addTo(areaMap);
+  }
+}
+
+function fecharPoligono() {
+  if (areaDrawPoints.length < 3) { toast('Precisa de pelo menos 3 pontos'); return; }
+  // Limpa marcadores e linhas temporárias
+  areaMarkers.forEach(m => areaMap.removeLayer(m));
+  areaMarkers = [];
+  if (window._areaTempLine) { areaMap.removeLayer(window._areaTempLine); window._areaTempLine = null; }
+  if (window._areaTempLine2) { areaMap.removeLayer(window._areaTempLine2); window._areaTempLine2 = null; }
+
+  // Cria o polígono final
+  areaDrawnLayer.clearLayers();
+  const coords = areaDrawPoints.map(p => [p.lat, p.lng]);
+  const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+  areaDrawnLayer.addLayer(poly);
+  areaPolygon = poly;
+  areaDrawPoints = [];
+  areaDrawing = false;
+  document.getElementById('btnDesenhar').classList.remove('active');
+  document.getElementById('btnDesenhar').textContent = '✏️ Desenhar';
+  document.getElementById('areaDica').style.display = 'none';
+  document.getElementById('areaVertCount').textContent = coords.length + ' pontos definidos';
+  toast('Zona fechada com ' + coords.length + ' pontos');
+}
+
+function toggleDesenho() {
+  if (areaDrawing) {
+    // Cancela desenho
+    areaDrawing = false;
+    areaDrawPoints = [];
+    areaMarkers.forEach(m => areaMap.removeLayer(m));
+    areaMarkers = [];
+    if (window._areaTempLine) { areaMap.removeLayer(window._areaTempLine); window._areaTempLine = null; }
+    if (window._areaTempLine2) { areaMap.removeLayer(window._areaTempLine2); window._areaTempLine2 = null; }
+    document.getElementById('btnDesenhar').classList.remove('active');
+    document.getElementById('btnDesenhar').textContent = '✏️ Desenhar';
+    document.getElementById('areaDica').style.display = 'none';
+    document.getElementById('areaVertCount').textContent = '';
+  } else {
+    // Inicia desenho
+    if (areaPolygon) { areaDrawnLayer.clearLayers(); areaPolygon = null; }
+    areaDrawing = true;
+    areaDrawPoints = [];
+    document.getElementById('btnDesenhar').classList.add('active');
+    document.getElementById('btnDesenhar').textContent = '⏹️ Parar desenho';
+    document.getElementById('areaDica').style.display = 'block';
+    document.getElementById('areaDica').textContent = '👆 Clique no mapa para adicionar pontos da zona. Clique no 1º ponto (ou duplo clique) para fechar o polígono. Mínimo 3 pontos.';
+    document.getElementById('areaVertCount').textContent = 'Clique no mapa para começar...';
+    toast('Modo desenho ativado — clique no mapa');
+  }
 }
 
 function buscarLocalMapa() {
@@ -797,13 +885,15 @@ function buscarLocalMapa() {
   if (!q) { toast('Digite uma cidade ou bairro'); return; }
   if (!areaMap) { toast('Mapa não inicializado'); return; }
   document.getElementById('areaVertCount').textContent = 'Buscando...';
-  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=1&addressdetails=1')
+  // Busca com addressdetails para filtrar por tipo
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=5&addressdetails=1')
     .then(r => r.json())
     .then(data => {
       if (data && data.length > 0) {
-        const r = data[0];
-        areaMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
-        document.getElementById('areaVertCount').textContent = 'Mapa em ' + (r.display_name || q).substring(0, 50);
+        // Prefere resultados de tipo bairro/suburb/neighbourhood
+        const preferred = data.find(d => ['suburb', 'neighbourhood', 'quarter', 'borough', 'city_district'].includes(d.addresstype)) || data[0];
+        areaMap.setView([parseFloat(preferred.lat), parseFloat(preferred.lon)], 15);
+        document.getElementById('areaVertCount').textContent = 'Mapa em ' + (preferred.display_name || q).substring(0, 60);
         toast('Mapa centralizado');
       } else {
         document.getElementById('areaVertCount').textContent = '';
@@ -817,74 +907,115 @@ function importarBairro() {
   const q = document.getElementById('areaCidadeNome').value.trim();
   if (!q) { toast('Digite um bairro e cidade (ex: Setor Centro, Goiânia)'); return; }
   if (!areaMap) { toast('Mapa não inicializado'); return; }
-  document.getElementById('areaVertCount').textContent = 'Importando limites...';
-  // Nominatim com polygon_geojson=1 retorna os limites do bairro
-  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=1&polygon_geojson=1')
+  document.getElementById('areaVertCount').textContent = 'Buscando limites do bairro...';
+
+  // Busca múltiplos resultados com polygon_geojson e filtra por tipo
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q + ', Brasil') + '&limit=10&polygon_geojson=1&addressdetails=1')
     .then(r => r.json())
     .then(data => {
-      if (data && data.length > 0) {
-        const r = data[0];
-        const geojson = r.geojson;
-        if (!geojson) { toast('Limites não disponíveis para este local'); document.getElementById('areaVertCount').textContent = ''; return; }
-
-        // Centraliza no local
-        areaMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 14);
-
-        // Converte GeoJSON para LatLngs do Leaflet
-        let coords = [];
-        if (geojson.type === 'Polygon') {
-          coords = geojson.coordinates[0].map(c => [c[1], c[0]]); // [lng,lat] → [lat,lng]
-        } else if (geojson.type === 'MultiPolygon') {
-          // Pega o maior polígono
-          let biggest = geojson.coordinates[0][0];
-          for (const poly of geojson.coordinates) {
-            if (poly[0].length > biggest.length) biggest = poly[0];
-          }
-          coords = biggest.map(c => [c[1], c[0]]);
-        }
-
-        if (coords.length < 3) { toast('Polígono inválido'); document.getElementById('areaVertCount').textContent = ''; return; }
-
-        // Desenha o polígono no mapa
-        areaDrawnLayer.clearLayers();
-        const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
-        areaDrawnLayer.addLayer(poly);
-        areaPolygon = poly;
-        areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
-        document.getElementById('areaVertCount').textContent = coords.length + ' pontos importados';
-        toast('Limites importados: ' + coords.length + ' pontos');
-
-        // Preenche o nome se vazio
-        if (!document.getElementById('areaNome').value.trim()) {
-          const parts = q.split(',');
-          document.getElementById('areaNome').value = parts[0].trim();
-        }
-      } else {
-        toast('Bairro não encontrado');
+      if (!data || data.length === 0) {
+        toast('Bairro não encontrado — tente desenhar manualmente');
         document.getElementById('areaVertCount').textContent = '';
+        return;
+      }
+
+      // Filtra apenas resultados que são bairros/setores/subúrbios (não cidade inteira)
+      const tiposBairro = ['suburb', 'neighbourhood', 'quarter', 'borough', 'city_district'];
+      let resultado = data.find(d => tiposBairro.includes(d.addresstype) && d.geojson);
+
+      // Se não encontrou bairro, pega o menor polígono (mais específico)
+      if (!resultado) {
+        const comGeo = data.filter(d => d.geojson);
+        if (comGeo.length === 0) {
+          toast('Limites não disponíveis — desenhe manualmente');
+          document.getElementById('areaVertCount').textContent = '';
+          return;
+        }
+        // Pega o que tem menos pontos (mais específico, menos chance de ser cidade inteira)
+        resultado = comGeo.reduce((min, d) => {
+          const pts = contarPontos(d.geojson);
+          return pts < contarPontos(min.geojson) ? d : min;
+        }, comGeo[0]);
+
+        // Se mesmo o menor tem mais de 2000 pontos, provavelmente é cidade inteira
+        const pts = contarPontos(resultado.geojson);
+        if (pts > 2000) {
+          toast('Bairro muito grande ou não encontrado — desenhe manualmente');
+          document.getElementById('areaVertCount').textContent = '';
+          return;
+        }
+      }
+
+      const geojson = resultado.geojson;
+      let coords = [];
+
+      if (geojson.type === 'Polygon') {
+        coords = geojson.coordinates[0].map(c => [c[1], c[0]]);
+      } else if (geojson.type === 'MultiPolygon') {
+        // Pega o maior polígono individual
+        let biggest = geojson.coordinates[0][0];
+        for (const poly of geojson.coordinates) {
+          if (poly[0].length > biggest.length) biggest = poly[0];
+        }
+        coords = biggest.map(c => [c[1], c[0]]);
+      }
+
+      if (coords.length < 3) {
+        toast('Polígono inválido — desenhe manualmente');
+        document.getElementById('areaVertCount').textContent = '';
+        return;
+      }
+
+      // Se o polígono tem muitos pontos, simplifica (mantém 1 a cada N)
+      if (coords.length > 200) {
+        const step = Math.ceil(coords.length / 200);
+        coords = coords.filter((_, i) => i % step === 0);
+        // Garante que fecha o polígono
+        if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+          coords.push(coords[0]);
+        }
+      }
+
+      // Desenha no mapa
+      areaDrawnLayer.clearLayers();
+      const poly = L.polygon(coords, { color: '#00d4aa', weight: 3, fillOpacity: 0.2 });
+      areaDrawnLayer.addLayer(poly);
+      areaPolygon = poly;
+      areaMap.fitBounds(poly.getBounds(), { padding: [30, 30] });
+      document.getElementById('areaVertCount').textContent = coords.length + ' pontos importados';
+      toast('Limites importados: ' + coords.length + ' pontos');
+
+      // Preenche o nome se vazio
+      if (!document.getElementById('areaNome').value.trim()) {
+        const parts = q.split(',');
+        document.getElementById('areaNome').value = parts[0].trim();
       }
     })
-    .catch(() => { toast('Erro ao importar'); document.getElementById('areaVertCount').textContent = ''; });
+    .catch(() => { toast('Erro ao importar — desenhe manualmente'); document.getElementById('areaVertCount').textContent = ''; });
 }
 
-function iniciarDesenho() {
-  if (!areaMap) { toast('Mapa não inicializado'); return; }
-  // Cancela desenho anterior se existir
-  if (areaDrawHandler) { areaDrawHandler.disable(); }
-  // Cria novo handler de polígono
-  areaDrawHandler = new L.Draw.Polygon(areaMap, {
-    allowIntersection: false,
-    showArea: true,
-    shapeOptions: { color: '#00d4aa', weight: 3, fillOpacity: 0.2 }
-  });
-  areaDrawHandler.enable();
-  toast('Clique no mapa para traçar a zona. Clique no primeiro ponto para fechar.');
+function contarPontos(geojson) {
+  if (!geojson) return 0;
+  if (geojson.type === 'Polygon') return geojson.coordinates[0].length;
+  if (geojson.type === 'MultiPolygon') {
+    return Math.max(...geojson.coordinates.map(p => p[0].length));
+  }
+  return 0;
 }
 
 function limparDesenho() {
   if (areaDrawnLayer) areaDrawnLayer.clearLayers();
   areaPolygon = null;
-  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
+  areaDrawPoints = [];
+  areaMarkers.forEach(m => areaMap && areaMap.removeLayer(m));
+  areaMarkers = [];
+  if (window._areaTempLine) { areaMap && areaMap.removeLayer(window._areaTempLine); window._areaTempLine = null; }
+  if (window._areaTempLine2) { areaMap && areaMap.removeLayer(window._areaTempLine2); window._areaTempLine2 = null; }
+  areaDrawing = false;
+  const btn = document.getElementById('btnDesenhar');
+  if (btn) { btn.classList.remove('active'); btn.textContent = '✏️ Desenhar'; }
+  const dica = document.getElementById('areaDica');
+  if (dica) dica.style.display = 'none';
   document.getElementById('areaVertCount').textContent = '';
 }
 
@@ -912,8 +1043,12 @@ function openAreaModal() {
   document.getElementById('areaTaxa').value = '';
   fillEmpresaSelect('areaEmpresa');
   areaPolygon = null;
-  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
+  areaDrawPoints = [];
+  areaMarkers = [];
+  areaDrawing = false;
   document.getElementById('areaVertCount').textContent = '';
+  const dica = document.getElementById('areaDica');
+  if (dica) dica.style.display = 'none';
   document.getElementById('areaModal').classList.add('open');
   setTimeout(() => { initAreaMap(); }, 150);
 }
@@ -942,9 +1077,11 @@ async function editArea(id) {
 
 function closeAreaModal() {
   closeModal('areaModal');
-  if (areaDrawHandler) { areaDrawHandler.disable(); areaDrawHandler = null; }
   if (areaMap) { areaMap.remove(); areaMap = null; }
   areaPolygon = null;
+  areaDrawPoints = [];
+  areaMarkers = [];
+  areaDrawing = false;
 }
 
 async function saveArea() {
