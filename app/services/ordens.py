@@ -152,6 +152,10 @@ def atualizar_status(
     with transaction() as conn:
         ordens.update_status(conn, ordem_id, status, entregador_id=entregador_id)
 
+        # Comissão automática do entregador quando entrega é concluída
+        if status == "ENTREGUE":
+            _registrar_comissao(conn, ordem_id)
+
     ordem = ordens.get(ordem_id) or {}
 
     # Notifica Cardápio sobre mudança de status
@@ -165,3 +169,61 @@ def atualizar_status(
         )
 
     return ordem
+
+
+def _registrar_comissao(conn, ordem_id: int) -> None:
+    """Registra comissão do entregador (percentual da taxa).
+
+    Idempotente: se já existe comissão para a ordem, não faz nada.
+    Percentual padrão: 70% da taxa. Configurável por empresa em
+    empresas.config.comissao_entregador_pct.
+    """
+    import psycopg2.extras
+
+    cur = conn.cursor()
+    # Verifica se já existe comissão
+    cur.execute(
+        "SELECT id FROM comissoes_entregador WHERE ordem_id = %s",
+        (ordem_id,),
+    )
+    if cur.fetchone():
+        return
+
+    # Busca a ordem
+    cur.execute(
+        "SELECT id, entregador_id, taxa, empresa_id FROM ordens_servico WHERE id = %s",
+        (ordem_id,),
+    )
+    row = cur.fetchone()
+    if not row or not row["entregador_id"]:
+        return
+
+    taxa_total = float(row["taxa"] or 0)
+    entregador_id = row["entregador_id"]
+    empresa_id = row["empresa_id"]
+
+    # Busca percentual de comissão da empresa
+    pct = 70.0  # padrão
+    cur.execute("SELECT config FROM empresas WHERE id = %s", (empresa_id,))
+    emp_row = cur.fetchone()
+    if emp_row and emp_row["config"]:
+        config = emp_row["config"]
+        if isinstance(config, str):
+            import json
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+        if isinstance(config, dict):
+            pct = float(config.get("comissao_entregador_pct", 70.0))
+
+    valor_comissao = round(taxa_total * pct / 100, 2)
+
+    cur.execute(
+        """
+        INSERT INTO comissoes_entregador
+            (entregador_id, ordem_id, taxa_total, pct_comissao, valor_comissao, status)
+        VALUES (%s, %s, %s, %s, %s, 'PENDENTE')
+        """,
+        (entregador_id, ordem_id, taxa_total, pct, valor_comissao),
+    )

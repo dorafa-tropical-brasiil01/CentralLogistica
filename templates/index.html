@@ -173,39 +173,6 @@
       </div>
     </header>
 
-    <div id="despachadorView" class="main">
-      <aside class="sidebar">
-        <div class="tabs">
-          <div class="tab active" onclick="switchTab(this, 'pendentes')">Pendentes</div>
-          <div class="tab" onclick="switchTab(this, 'entregadores')">Entregadores</div>
-          <div class="tab" onclick="switchTab(this, 'corridas')">Corridas</div>
-        </div>
-        <div class="panel active" id="panel-pendentes">
-          <div class="section-title">Ordens aguardando atribuição</div>
-          <div class="order-list" id="readyList"></div>
-        </div>
-        <div class="panel" id="panel-entregadores">
-          <div class="section-title">Entregadores</div>
-          <div id="driverList"></div>
-        </div>
-        <div class="panel" id="panel-corridas">
-          <div class="section-title">Corridas ativas</div>
-          <div id="runList"></div>
-        </div>
-      </aside>
-      <div class="map-wrap">
-        <div id="map"></div>
-        <div class="map-overlay">
-          <div style="font-weight:900">Acompanhamento em tempo real</div>
-          <div id="mapStats" style="margin-top:4px;opacity:.9;font-size:12px">—</div>
-        </div>
-        <div class="map-legend">
-          <span><i class="dot ready"></i> Pendente</span>
-          <span><i class="dot driver"></i> Em rota</span>
-          <span><i class="dot done"></i> Entregue</span>
-          <span><i class="dot zone"></i> Zona</span>
-        </div>
-      </div>
     </div>
 
     <div id="entregadorView" class="main" style="grid-template-columns:1fr; overflow-y:auto; display:none;">
@@ -213,6 +180,7 @@
         <div class="tabs">
           <div class="tab active" onclick="switchTabEnt(this, 'disp')">Disponíveis</div>
           <div class="tab" onclick="switchTabEnt(this, 'minhas')">Minhas corridas</div>
+          <div class="tab" onclick="switchTabEnt(this, 'salario')">Meu salário</div>
         </div>
         <div class="panel active" id="panel-disp">
           <div class="section-title">Entregas disponíveis — toque para pegar</div>
@@ -220,6 +188,9 @@
         </div>
         <div class="panel" id="panel-minhas">
           <div id="entregadorRun"></div>
+        </div>
+        <div class="panel" id="panel-salario">
+          <div id="salarioContent"></div>
         </div>
       </div>
     </div>
@@ -313,6 +284,10 @@
           return;
         }
         const j = await r.json();
+        if (j.usuario.perfil !== 'ENTREGADOR') {
+          showToast('Acesso restrito a entregadores. Use /admin ou /portal.');
+          return;
+        }
         token = j.token;
         sessionStorage.setItem('remo_token', token);
         currentUser = j.usuario;
@@ -336,23 +311,13 @@
     async function showApp() {
       document.getElementById('login').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
-      const perfil = currentUser.perfil;
-      document.getElementById('roleLabel').textContent = (perfil === 'ENTREGADOR' ? 'Entregador: ' : 'Central / Despachador') + ' — ' + (currentUser.nome || currentUser.username);
-
-      if (perfil === 'ENTREGADOR') {
-        document.getElementById('despachadorView').style.display = 'none';
-        document.getElementById('entregadorView').style.display = 'flex';
-        renderDisponiveis();
-        renderEntregadorView();
-        pollTimer = setInterval(() => { renderDisponiveis(); renderEntregadorView(); }, 10000);
-        iniciarGPS();
-      } else {
-        document.getElementById('entregadorView').style.display = 'none';
-        document.getElementById('despachadorView').style.display = 'grid';
-        initMap();
-        carregarDados();
-        pollTimer = setInterval(carregarDados, 10000);
-      }
+      document.getElementById('roleLabel').textContent = 'Entregador: ' + (currentUser.nome || currentUser.username);
+      document.getElementById('entregadorView').style.display = 'flex';
+      renderDisponiveis();
+      renderEntregadorView();
+      renderSalario();
+      pollTimer = setInterval(() => { renderDisponiveis(); renderEntregadorView(); renderSalario(); }, 10000);
+      iniciarGPS();
     }
 
     function switchTabEnt(el, name) {
@@ -782,6 +747,64 @@
     }
 
     function openMaps(url) { window.open(url, '_blank'); }
+
+    // --- Entregador: meu salário ---
+    async function renderSalario() {
+      const el = document.getElementById('salarioContent');
+      if (!el) return;
+      try {
+        const r = await api('/meu-salario');
+        const j = await r.json();
+        const s = j.resumo || {};
+        const comissoes = j.comissoes || [];
+
+        let html = `
+          <div class="card" style="text-align:center;padding:24px">
+            <div style="font-size:12px;font-weight:800;color:var(--text-3);text-transform:uppercase">Salário acumulado (total)</div>
+            <div style="font-size:36px;font-weight:900;color:var(--accent);margin:8px 0">${money(s.total || 0)}</div>
+            <div style="display:flex;gap:12px;justify-content:center;margin-top:12px">
+              <div style="background:var(--surface-2);border-radius:10px;padding:10px 16px">
+                <div style="font-size:11px;color:var(--text-3);font-weight:700">Pendente</div>
+                <div style="font-size:18px;font-weight:900;color:var(--warn)">${money(s.pendente || 0)}</div>
+              </div>
+              <div style="background:var(--surface-2);border-radius:10px;padding:10px 16px">
+                <div style="font-size:11px;color:var(--text-3);font-weight:700">Pago</div>
+                <div style="font-size:18px;font-weight:900;color:var(--accent-2)">${money(s.pago || 0)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-title">Histórico de comissões (${comissoes.length})</div>
+        `;
+
+        if (!comissoes.length) {
+          html += '<div class="empty">Nenhuma comissão ainda. Entregue pedidos para acumular salário!</div>';
+        } else {
+          html += '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Protocolo</th><th>Taxa</th><th>%</th><th>Sua comissão</th><th>Status</th></tr></thead><tbody>';
+          html += comissoes.map(c => `
+            <tr>
+              <td style="font-size:12px">${fmtDateShort(c.criado_em)}</td>
+              <td style="font-size:12px;font-weight:700">${c.protocolo || '—'}</td>
+              <td>${money(c.taxa_total)}</td>
+              <td>${c.pct}%</td>
+              <td style="font-weight:900;color:var(--accent)">${money(c.valor)}</td>
+              <td><span class="badge ${c.status === 'PAGO' ? 'badge-success' : 'badge-pending'}">${c.status}</span></td>
+            </tr>
+          `).join('');
+          html += '</tbody></table></div>';
+        }
+        html += '</div>';
+        el.innerHTML = html;
+      } catch (err) {
+        if (err.message !== 'nao_autenticado') el.innerHTML = '<div class="empty">Erro ao carregar salário</div>';
+      }
+    }
+
+    function fmtDateShort(d) {
+      if (!d) return '—';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
 
     // --- Init ---
     if ('serviceWorker' in navigator && location.protocol.includes('http')) {

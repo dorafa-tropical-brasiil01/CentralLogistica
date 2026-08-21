@@ -316,6 +316,72 @@ def enviar_localizacao():
     return jsonify({"ok": True})
 
 
+# --- Entregador: meu salário (comissões) ---
+
+@bp.get("/meu-salario")
+def meu_salario():
+    """Comissões acumuladas do entregador."""
+    user = _requer_login()
+    if not user:
+        return jsonify({"error": "nao_autenticado"}), 401
+
+    from app.core.db import connect
+
+    with connect() as conn:
+        cur = conn.cursor()
+        # Resumo
+        cur.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'PENDENTE' THEN valor_comissao ELSE 0 END), 0) as pendente,
+                COALESCE(SUM(CASE WHEN status = 'PAGO' THEN valor_comissao ELSE 0 END), 0) as pago,
+                COALESCE(SUM(valor_comissao), 0) as total,
+                COUNT(*) as total_comissoes,
+                COUNT(*) FILTER (WHERE status = 'PENDENTE') as pendentes,
+                COUNT(*) FILTER (WHERE status = 'PAGO') as pagas
+            FROM comissoes_entregador
+            WHERE entregador_id = %s
+        """, (user["usuario_id"],))
+        resumo = dict(cur.fetchone())
+
+        # Histórico recente
+        cur.execute("""
+            SELECT c.id, c.ordem_id, c.taxa_total, c.pct_comissao, c.valor_comissao,
+                   c.status, c.criado_em, c.pago_em,
+                   o.protocolo, o.solicitacao_id
+            FROM comissoes_entregador c
+            LEFT JOIN ordens_servico o ON o.id = c.ordem_id
+            WHERE c.entregador_id = %s
+            ORDER BY c.criado_em DESC
+            LIMIT 50
+        """, (user["usuario_id"],))
+        comissoes = []
+        for r in (dict(x) for x in cur.fetchall()):
+            comissoes.append({
+                "id": r["id"],
+                "ordem_id": r.get("ordem_id"),
+                "protocolo": r.get("protocolo"),
+                "taxa_total": float(r["taxa_total"] or 0),
+                "pct": float(r["pct_comissao"] or 0),
+                "valor": float(r["valor_comissao"] or 0),
+                "status": r.get("status"),
+                "criado_em": r["criado_em"].isoformat() if r.get("criado_em") else None,
+                "pago_em": r["pago_em"].isoformat() if r.get("pago_em") else None,
+            })
+
+    return jsonify({
+        "ok": True,
+        "resumo": {
+            "pendente": float(resumo["pendente"] or 0),
+            "pago": float(resumo["pago"] or 0),
+            "total": float(resumo["total"] or 0),
+            "total_comissoes": resumo["total_comissoes"],
+            "pendentes": resumo["pendentes"],
+            "pagas": resumo["pagas"],
+        },
+        "comissoes": comissoes,
+    })
+
+
 # --- Helpers ---
 
 def _serializar_ordem(o: dict) -> dict:
