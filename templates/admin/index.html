@@ -328,7 +328,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Data</th><th>Protocolo</th><th>Status</th><th>Valor</th><th>Entregador</th><th>Pedido</th></tr></thead>
+              <thead><tr><th>Data</th><th>Protocolo</th><th>Status</th><th>Valor</th><th>Entregador</th><th>Pedido</th><th>Ações</th></tr></thead>
               <tbody id="ordTable"></tbody>
             </table>
           </div>
@@ -514,6 +514,17 @@
   </div>
 </div>
 
+<div class="modal-bg" id="assignModal">
+  <div class="modal">
+    <h3>Atribuir ordem a entregador</h3>
+    <div class="form-group"><label>Entregador</label><select id="assignEntregadorSelect"></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAssignModal()">Cancelar</button>
+      <button class="btn btn-accent" onclick="confirmAssign()">Atribuir</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -522,6 +533,8 @@ const API = '/api/admin';
 let token = sessionStorage.getItem('remo_admin_token') || '';
 let currentUser = null;
 let map = null, markersLayer = null, zonesLayer = null, routesLayer = null;
+let monitorTimer = null;
+let currentModule = 'monitor';
 let chartHora = null, chartDia = null;
 let empresasCache = [];
 
@@ -553,6 +566,7 @@ async function doLogin(e) {
 }
 
 function doLogout() {
+  if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
   token = ''; sessionStorage.removeItem('remo_admin_token'); currentUser = null;
   document.getElementById('login').classList.remove('hidden');
   document.getElementById('app').classList.add('hidden');
@@ -566,6 +580,7 @@ async function showApp() {
   await loadEmpresas();
   initMap();
   loadMonitor();
+  monitorTimer = setInterval(loadMonitor, 10000);
 }
 
 function showModule(name, el) {
@@ -575,7 +590,14 @@ function showModule(name, el) {
   el.classList.add('active');
   const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores', clientes: 'Clientes' };
   document.getElementById('moduleTitle').textContent = titles[name] || name;
-  if (name === 'monitor') { setTimeout(() => map && map.invalidateSize(), 100); loadMonitor(); }
+  currentModule = name;
+  // Polling automático no módulo monitoramento (10s)
+  if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
+  if (name === 'monitor') {
+    setTimeout(() => map && map.invalidateSize(), 100);
+    loadMonitor();
+    monitorTimer = setInterval(loadMonitor, 10000);
+  }
   if (name === 'financeiro') loadFinanceiro();
   if (name === 'carteira') loadCarteiras();
   if (name === 'relatorios') loadRelatorios();
@@ -621,7 +643,9 @@ async function loadMonitor() {
       if (!coords) return;
       const cls = o.status === 'ENTREGUE' ? 'done' : (o.status === 'PENDENTE' ? '' : 'assigned');
       const icon = L.divIcon({ className: '', html: '<div class="order-marker ' + cls + '">' + o.status.charAt(0) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
-      L.marker(coords, { icon }).addTo(markersLayer).bindPopup('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status);
+      const canAssign = (o.status === 'PENDENTE' || o.status === 'ATRIBUIDO');
+      const assignHtml = canAssign ? `<br><button class="btn btn-accent btn-sm" style="margin-top:6px" onclick="openAssignModal(${o.id})">Atribuir</button>` : '';
+      L.marker(coords, { icon }).addTo(markersLayer).bindPopup('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status + assignHtml);
 
       // Rota: se entregador tem localização
       if (o.entregador_id) {
@@ -761,9 +785,55 @@ async function loadOrdens() {
     const r = await api('/ordens?' + params.toString());
     const j = await r.json();
     const tb = document.getElementById('ordTable');
-    if (!j.ordens.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nenhuma ordem encontrada</td></tr>'; return; }
-    tb.innerHTML = j.ordens.map(o => `<tr><td>${fmtDate(o.criado_em)}</td><td>${o.protocolo}</td><td><span class="badge ${o.status === 'ENTREGUE' ? 'badge-success' : o.status === 'CANCELADO' ? 'badge-danger' : 'badge-info'}">${o.status}</span></td><td>${money(o.taxa)}</td><td>${o.entregador || '—'}</td><td style="font-size:12px">${o.solicitacao_id}</td></tr>`).join('');
+    if (!j.ordens.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Nenhuma ordem encontrada</td></tr>'; return; }
+    tb.innerHTML = j.ordens.map(o => {
+      const canAssign = (o.status === 'PENDENTE' || o.status === 'ATRIBUIDO');
+      const assignBtn = canAssign ? `<button class="btn btn-accent btn-sm" onclick="openAssignModal(${o.id})">Atribuir</button>` : '—';
+      return `<tr><td>${fmtDate(o.criado_em)}</td><td>${o.protocolo}</td><td><span class="badge ${o.status === 'ENTREGUE' ? 'badge-success' : o.status === 'CANCELADO' ? 'badge-danger' : 'badge-info'}">${o.status}</span></td><td>${money(o.taxa)}</td><td>${o.entregador || '—'}</td><td style="font-size:12px">${o.solicitacao_id}</td><td>${assignBtn}</td></tr>`;
+    }).join('');
   } catch { toast('Erro ao carregar ordens'); }
+}
+
+// --- Modal de atribuição de ordem ---
+let assignOrdemId = null;
+async function openAssignModal(ordemId) {
+  assignOrdemId = ordemId;
+  const modal = document.getElementById('assignModal');
+  const select = document.getElementById('assignEntregadorSelect');
+  select.innerHTML = '<option value="">Carregando...</option>';
+  modal.classList.add('open');
+  try {
+    const r = await api('/entregadores');
+    const j = await r.json();
+    const ents = (j.entregadores || []).filter(e => e.ativo);
+    if (!ents.length) { select.innerHTML = '<option value="">Nenhum entregador ativo</option>'; return; }
+    select.innerHTML = ents.map(e => `<option value="${e.id}">${e.nome} (${e.username})</option>`).join('');
+  } catch { select.innerHTML = '<option value="">Erro ao carregar</option>'; }
+}
+
+function closeAssignModal() {
+  document.getElementById('assignModal').classList.remove('open');
+  assignOrdemId = null;
+}
+
+async function confirmAssign() {
+  const entregadorId = document.getElementById('assignEntregadorSelect').value;
+  if (!entregadorId) { toast('Selecione um entregador'); return; }
+  if (!assignOrdemId) { toast('Ordem inválida'); return; }
+  try {
+    const r = await api(`/ordens/${assignOrdemId}/atribuir`, {
+      method: 'POST',
+      body: JSON.stringify({ entregador_id: parseInt(entregadorId) }),
+    });
+    if (r.ok) {
+      toast('Ordem atribuída com sucesso');
+      closeAssignModal();
+      loadOrdens();
+    } else {
+      const j = await r.json().catch(() => ({}));
+      toast('Erro: ' + (j.error || r.status));
+    }
+  } catch { toast('Erro de conexão'); }
 }
 
 // ÁREAS

@@ -1195,3 +1195,83 @@ def pagar_comissoes():
         pagas = cur.rowcount
 
     return jsonify({"ok": True, "pagas": pagas})
+
+
+# ------------------------------------------------------------------
+# ATRIBUIR ORDEM A ENTREGADOR (admin/despachador)
+# ------------------------------------------------------------------
+
+@bp.post("/ordens/<int:ordem_id>/atribuir")
+def admin_atribuir_ordem(ordem_id: int):
+    """Admin atribui uma ordem pendente a um entregador específico."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    entregador_id = data.get("entregador_id")
+    if not entregador_id:
+        return _err("entregador_id_obrigatorio", 400)
+
+    try:
+        entregador_id = int(entregador_id)
+    except (TypeError, ValueError):
+        return _err("entregador_id_invalido", 400)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        # Verifica se a ordem existe e está pendente
+        cur.execute("SELECT * FROM ordens_servico WHERE id = %s", (ordem_id,))
+        row = cur.fetchone()
+        if not row:
+            return _err("ordem_nao_encontrada", 404)
+        ordem = dict(row)
+        if ordem.get("status") not in ("PENDENTE", "ATRIBUIDO"):
+            return _err("ordem_nao_pode_ser_atribuida", 400)
+
+        # Verifica se o entregador existe e está ativo
+        cur.execute(
+            "SELECT id, nome, ativo FROM usuarios WHERE id = %s AND perfil = 'ENTREGADOR'",
+            (entregador_id,),
+        )
+        ent_row = cur.fetchone()
+        if not ent_row:
+            return _err("entregador_nao_encontrado", 404)
+        if not dict(ent_row).get("ativo"):
+            return _err("entregador_inativo", 400)
+
+        # Atribui
+        cur.execute(
+            """UPDATE ordens_servico
+               SET status = 'ATRIBUIDO', entregador_id = %s, atribuido_em = NOW()
+               WHERE id = %s
+               RETURNING id, uuid, protocolo, status, entregador_id, taxa""",
+            (entregador_id, ordem_id),
+        )
+        updated = cur.fetchone()
+        if not updated:
+            return _err("falha_atribuir", 500)
+        result = dict(updated)
+
+    # Notifica o entregador via push
+    try:
+        from app.services import push as push_service
+        push_service.enviar_notificacao(
+            usuario_id=entregador_id,
+            titulo="Ordem atribuída a você!",
+            corpo=f"{result.get('protocolo', '')} — Taxa: R$ {float(result.get('taxa') or 0):.2f}".replace(".", ","),
+            dados={"ordem_id": ordem_id, "acao": "ver"},
+        )
+    except Exception:
+        pass  # push é best-effort
+
+    return jsonify({
+        "ok": True,
+        "ordem": {
+            "id": result.get("id"),
+            "protocolo": result.get("protocolo"),
+            "status": result.get("status"),
+            "entregador_id": result.get("entregador_id"),
+            "taxa": float(result.get("taxa") or 0),
+        },
+    })
