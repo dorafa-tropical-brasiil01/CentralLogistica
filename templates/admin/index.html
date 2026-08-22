@@ -104,8 +104,9 @@
     .filter-group input, .filter-group select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--surface); color: var(--text); }
 
     /* Mapa */
-    .map-container { position: relative; height: calc(100vh - 200px); min-height: 400px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    .map-container { position: relative; height: calc(100vh - 280px); min-height: 400px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
     #map { width: 100%; height: 100%; }
+    .map-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99999; border-radius: 0; }
     .map-overlay { position: absolute; top: 14px; left: 14px; z-index: 500; background: rgba(10,37,64,.9); color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 13px; }
     .map-legend { position: absolute; bottom: 14px; right: 14px; z-index: 500; background: rgba(10,37,64,.9); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 12px; }
     .map-legend span { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; }
@@ -203,6 +204,12 @@
       <div class="module active" id="mod-monitor">
         <div class="filters">
           <div class="filter-group">
+            <label>Cidade</label>
+            <select id="monCidade" onchange="onCidadeChange()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="filter-group">
             <label>Período</label>
             <select id="monPeriodo" onchange="loadMonitor()">
               <option value="6h">Últimas 6h</option>
@@ -211,6 +218,7 @@
             </select>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="loadMonitor()">↻ Atualizar</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleFullscreen()">⛶ Tela cheia</button>
         </div>
         <div class="indicators">
           <div class="indicator"><div class="indicator-value" id="indAgendadas">0</div><div class="indicator-label">Agendadas</div></div>
@@ -218,7 +226,7 @@
           <div class="indicator"><div class="indicator-value" id="indProgresso">0</div><div class="indicator-label">Em Progresso</div></div>
           <div class="indicator"><div class="indicator-value" id="indEncerrados">0</div><div class="indicator-label">Encerrados</div></div>
         </div>
-        <div class="map-container">
+        <div class="map-container" id="mapContainer">
           <div id="map"></div>
           <div class="map-overlay">
             <div style="font-weight:900">Tempo Real</div>
@@ -229,8 +237,9 @@
             <span><i class="dot route"></i> Em rota</span>
             <span><i class="dot done"></i> Entregue</span>
             <span><i class="dot zone"></i> Zona</span>
+            <span><i style="width:12px;height:4px;background:#00d4aa;border-radius:2px"></i> Percurso</span>
           </div>
-          <button class="btn btn-danger" style="position:absolute;top:10px;right:10px;z-index:1000;font-size:11px;padding:6px 10px" onclick="limparDados()">🗑️ Limpar dados</button>
+          <button class="btn btn-danger" style="position:absolute;top:10px;right:10px;z-index:1000;font-size:11px;padding:6px 10px" onclick="limparDados()">🗑️ Limpar</button>
         </div>
         <div class="card" style="margin-top:16px">
           <div class="card-title">Entregadores — Status GPS</div>
@@ -603,6 +612,7 @@ async function showApp() {
   document.getElementById('userName').textContent = currentUser.nome || currentUser.username;
   document.getElementById('userAvatar').textContent = (currentUser.nome || currentUser.username || 'A').charAt(0).toUpperCase();
   await loadEmpresas();
+  await carregarCidades();
   initMap();
   loadMonitor();
   monitorTimer = setInterval(loadMonitor, 10000);
@@ -635,14 +645,67 @@ function showModule(name, el) {
 }
 
 // MAPA
+const CIDADES_COORDS = {
+  'Goiania': [-16.6869, -49.2648],
+  'Vianopolis': [-16.7364, -49.2648],
+  'Anapolis': [-16.3280, -48.9530],
+  'Brasilia': [-15.7939, -47.8828],
+};
+
 function initMap() {
   if (map) { map.remove(); map = null; }
-  map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.6869, -49.2648], 13);
+  const cidade = document.getElementById('monCidade') ? document.getElementById('monCidade').value : '';
+  const coords = CIDADES_COORDS[cidade] || [-16.6869, -49.2648];
+  map = L.map('map', { zoomControl: true, attributionControl: false }).setView(coords, 14);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
   zonesLayer = L.layerGroup().addTo(map);
   routesLayer = L.layerGroup().addTo(map);
 }
+
+async function carregarCidades() {
+  try {
+    const r = await api('/areas?pageSize=1000');
+    const j = await r.json();
+    const cidades = [...new Set((j.areas || []).map(a => a.cidade).filter(Boolean))].sort();
+    const sel = document.getElementById('monCidade');
+    if (!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = '<option value="">Todas</option>';
+    cidades.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    sel.value = atual;
+  } catch {}
+}
+
+function onCidadeChange() {
+  const cidade = document.getElementById('monCidade').value;
+  if (cidade && CIDADES_COORDS[cidade]) {
+    map.setView(CIDADES_COORDS[cidade], 14);
+  }
+  loadMonitor();
+}
+
+function toggleFullscreen() {
+  const container = document.getElementById('mapContainer');
+  container.classList.toggle('fullscreen');
+  setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+  const btn = event.target;
+  btn.textContent = container.classList.contains('fullscreen') ? '⛶ Sair' : '⛶ Tela cheia';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const container = document.getElementById('mapContainer');
+    if (container && container.classList.contains('fullscreen')) {
+      container.classList.remove('fullscreen');
+      setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+    }
+  }
+});
 
 function extractCoords(url) {
   if (!url) return null;
@@ -668,7 +731,9 @@ async function limparDados() {
 
 async function loadMonitor() {
   try {
-    const r = await api('/monitoramento');
+    const cidade = document.getElementById('monCidade') ? document.getElementById('monCidade').value : '';
+    const url = cidade ? '/monitoramento?cidade=' + encodeURIComponent(cidade) : '/monitoramento';
+    const r = await api(url);
     const j = await r.json();
     document.getElementById('indAgendadas').textContent = j.indicadores.agendadas;
     document.getElementById('indProcurando').textContent = j.indicadores.procurando;

@@ -106,6 +106,8 @@ def monitoramento():
     if not user:
         return _err("nao_autenticado", 401)
 
+    cidade_filtro = (request.args.get("cidade") or "").strip()
+
     with connect() as conn:
         cur = conn.cursor()
         # Indicadores por status (últimas 6h)
@@ -143,6 +145,14 @@ def monitoramento():
                 "payload": payload,
                 "criado_em": r.get("criado_em").isoformat() if r.get("criado_em") else None,
             })
+
+        # Filtra ordens por cidade (busca no client_maps_url ou solicitacao_id)
+        if cidade_filtro:
+            cidade_lower = cidade_filtro.lower()
+            ordens = [o for o in ordens if (
+                cidade_lower in (o.get("payload", {}).get("client_maps_url", "") or "").lower()
+                or cidade_lower in (o.get("solicitacao_id", "") or "").lower()
+            )]
 
         # Entregadores com localização
         cur.execute("""
