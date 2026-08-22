@@ -130,13 +130,18 @@ def enviar_notificacao(
             vapid_key = vapid_key_raw
         logger.info("VAPID key processada (len=%s, primeiros 40): %s", len(vapid_key), vapid_key[:40])
 
-        # Tenta parsear a chave para validar
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        # Tenta parsear a chave para validar e re-serializar em PEM limpo
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key, Encoding, PrivateFormat, NoEncryption
         try:
             parsed = load_pem_private_key(vapid_key.encode() if isinstance(vapid_key, str) else vapid_key, password=None)
             logger.info("VAPID key parseada com sucesso: %s", type(parsed).__name__)
-            # Usa a chave parseada (objeto) em vez da string
-            vapid_key = parsed
+            # Re-serializa em PEM limpo (sem espaços/quebras erradas)
+            vapid_key = parsed.private_bytes(
+                encoding=Encoding.PEM,
+                format=PrivateFormat.PKCS8,
+                encryption_algorithm=NoEncryption(),
+            )
+            logger.info("VAPID key re-serializada para PEM limpo (len=%s)", len(vapid_key))
         except Exception as parse_err:
             logger.warning("VAPID key: falha ao parsear PEM, tentando como string: %s", parse_err)
     except Exception as e:
