@@ -432,17 +432,23 @@ def calcular_frete():
     if not client_maps_url:
         return _err("endereco_destino_obrigatorio"), 400
 
+    import logging
+    log = logging.getLogger("portal")
+    log.info("calcular-frete: url=%s origin=%s", client_maps_url[:80], (origin_maps_url or "")[:80])
+
     try:
         from app.services.ordens import _calcular_frete_real
         from app.core.frete import extract_lat_lng, resolve_short_url
         # Resolve URL encurtada para debug
         resolved = resolve_short_url(client_maps_url)
         coords = extract_lat_lng(resolved)
+        log.info("calcular-frete: resolved=%s coords=%s", resolved[:80] if resolved != client_maps_url else "igual", coords)
         taxa = _calcular_frete_real(
             empresa_id=empresa_id,
             origin_maps_url=origin_maps_url or None,
             client_maps_url=client_maps_url,
         )
+        log.info("calcular-frete: taxa=%s", taxa)
         if taxa is None:
             taxa = 0.0
     except Exception as e:
