@@ -434,6 +434,10 @@ def calcular_frete():
 
     try:
         from app.services.ordens import _calcular_frete_real
+        from app.core.frete import extract_lat_lng, resolve_short_url
+        # Resolve URL encurtada para debug
+        resolved = resolve_short_url(client_maps_url)
+        coords = extract_lat_lng(resolved)
         taxa = _calcular_frete_real(
             empresa_id=empresa_id,
             origin_maps_url=origin_maps_url or None,
@@ -454,4 +458,8 @@ def calcular_frete():
         "taxa": float(taxa),
         "saldo": saldo,
         "saldo_suficiente": saldo >= float(taxa),
+        "debug": {
+            "url_resolvida": resolved if resolved != client_maps_url else None,
+            "coords_encontradas": list(coords) if coords else None,
+        },
     })

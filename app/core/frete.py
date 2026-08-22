@@ -28,11 +28,30 @@ def _parse_float(v: Any) -> float | None:
         return None
 
 
+def resolve_short_url(url: str) -> str:
+    """Segue redirects de URLs encurtadas (maps.app.goo.gl, goo.gl, bit.ly, etc)."""
+    url = str(url or "").strip()
+    if not url:
+        return url
+    # Só tenta resolver se for URL encurtada
+    if "maps.app.goo.gl" not in url and "goo.gl/" not in url and "bit.ly/" not in url:
+        return url
+    try:
+        import requests
+        r = requests.get(url, allow_redirects=True, timeout=5)
+        return r.url  # URL final após redirects
+    except Exception:
+        return url
+
+
 def extract_lat_lng(s: str) -> tuple[float, float] | None:
     """Extrai latitude/longitude de uma URL ou texto do Google Maps."""
     s = str(s or "").strip()
     if not s:
         return None
+
+    # Resolve URLs encurtadas antes de tentar extrair coordenadas
+    s = resolve_short_url(s)
 
     m = re.search(r"@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", s)
     if m:
