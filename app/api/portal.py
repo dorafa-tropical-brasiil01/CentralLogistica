@@ -469,3 +469,92 @@ def calcular_frete():
             "coords_encontradas": list(coords) if coords else None,
         },
     })
+
+
+# ============================================================
+# Rastrear ordem (acompanhar entregador em tempo real)
+# ============================================================
+
+@bp.get("/ordens/<int:ordem_id>/rastrear")
+def rastrear_ordem(ordem_id: int):
+    """Retorna posição atual do entregador + trilha + destino da ordem."""
+    user = _requer_cliente()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    empresa_id = user.get("empresa_id")
+    if not empresa_id:
+        return _err("sem_empresa_vinculada", 400)
+
+    with connect() as conn:
+        cur = conn.cursor()
+        # Busca a ordem (só se pertence à empresa do cliente)
+        cur.execute("""
+            SELECT id, protocolo, status, taxa, entregador_id, payload_json
+            FROM ordens_servico
+            WHERE id = %s AND empresa_id = %s
+        """, (ordem_id, empresa_id))
+        row = cur.fetchone()
+        if not row:
+            return _err("ordem_nao_encontrada", 404)
+        o = dict(row)
+
+        payload = o.get("payload_json")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+
+        # Extrai coords do destino
+        from app.core.frete import extract_lat_lng, resolve_short_url
+        client_url = payload.get("client_maps_url", "")
+        dest_coords = None
+        if client_url:
+            resolved = resolve_short_url(client_url)
+            dest_coords = extract_lat_lng(resolved)
+
+        # Busca dados do entregador
+        entregador = None
+        trilha = []
+        if o.get("entregador_id"):
+            cur.execute("""
+                SELECT id, nome, localizacao_atual, ultima_localizacao_em
+                FROM usuarios WHERE id = %s
+            """, (o["entregador_id"],))
+            ent_row = cur.fetchone()
+            if ent_row:
+                ent = dict(ent_row)
+                loc = ent.get("localizacao_atual")
+                if isinstance(loc, str):
+                    try:
+                        loc = json.loads(loc)
+                    except Exception:
+                        loc = None
+                # Busca trilha (últimas 50 posições)
+                cur.execute("""
+                    SELECT lat, lng, criado_em
+                    FROM rastreamento
+                    WHERE usuario_id = %s
+                    ORDER BY criado_em DESC LIMIT 50
+                """, (o["entregador_id"],))
+                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
+                trilha.reverse()
+                entregador = {
+                    "nome": ent.get("nome"),
+                    "localizacao": loc,
+                    "ultima_localizacao_em": ent.get("ultima_localizacao_em").isoformat() if ent.get("ultima_localizacao_em") else None,
+                }
+
+    return jsonify({
+        "ok": True,
+        "ordem": {
+            "id": o["id"],
+            "protocolo": o.get("protocolo"),
+            "status": o["status"],
+            "taxa": float(o["taxa"] or 0),
+        },
+        "destino": {"lat": dest_coords[0], "lng": dest_coords[1]} if dest_coords else None,
+        "entregador": entregador,
+        "trilha": trilha,
+    })
