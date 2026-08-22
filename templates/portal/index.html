@@ -679,7 +679,6 @@ async function loadCarteira() {
     document.getElementById('empresaNome').textContent = c.empresa || '—';
   } catch (err) { if (err.message !== 'nao_autenticado') toast('Erro ao carregar saldo'); }
 }
-}
 
 // ORDENS
 let todasOrdens = [];
