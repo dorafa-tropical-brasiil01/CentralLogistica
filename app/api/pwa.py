@@ -363,7 +363,9 @@ def enviar_localizacao():
                     SELECT id FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 200
                 ) AND usuario_id = %s
             """, (user["usuario_id"], user["usuario_id"]))
+        logging.info("localizacao: user=%s lat=%s lng=%s salvo no rastreamento", user["usuario_id"], lat, lng)
     except Exception as e:
+        logging.error("localizacao: ERRO ao salvar: %s", e)
         return jsonify({"error": str(e)}), 400
 
     return jsonify({"ok": True})

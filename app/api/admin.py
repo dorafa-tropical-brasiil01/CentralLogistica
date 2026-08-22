@@ -13,6 +13,7 @@ Módulos:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import psycopg2.extras
@@ -237,6 +238,7 @@ def monitoramento():
                 trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
                 trilha.reverse()  # ordem cronológica
                 ent["trilha"] = trilha
+                logging.info("monitoramento: trilha para user=%s tem %d pontos", ent["id"], len(trilha))
 
     return jsonify({
         "ok": True,
