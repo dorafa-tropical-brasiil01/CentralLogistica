@@ -255,6 +255,12 @@
 
     <!-- MÓDULO: ORDENS -->
     <div class="module active" id="mod-ordens">
+      <!-- MAPA DE ACOMPANHAMENTO -->
+      <div id="acomMapCard" class="card" style="display:none;margin-bottom:16px">
+        <div class="card-title">Acompanhamento em tempo real</div>
+        <div id="acomMap" style="height:400px;border-radius:var(--radius-sm);border:1px solid var(--border);margin-top:10px"></div>
+        <div id="acomInfo" style="margin-top:10px;font-size:13px;color:var(--text-2)"></div>
+      </div>
       <div class="card">
         <div class="card-title">Entregas das últimas 24 horas</div>
         <div class="filters">
@@ -425,6 +431,7 @@ async function showApp() {
   document.getElementById('empresaNome').textContent = 'Conta: ' + (currentUser.username || '—');
   await loadCarteira();
   loadOrdens();
+  loadAcompanhar();
   loadExtrato();
   loadRecargas();
 }
@@ -436,7 +443,7 @@ function switchTab(el, name) {
   document.getElementById('mod-' + name).classList.add('active');
   if (name === 'extrato') loadExtrato();
   if (name === 'recargas') loadRecargas();
-  if (name === 'ordens') loadOrdens();
+  if (name === 'ordens') { loadOrdens(); loadAcompanhar(); }
 }
 
 // NOVA ENTREGA
@@ -626,6 +633,84 @@ async function loadOrdens() {
 let rastrearMap = null;
 let rastrearInterval = null;
 let rastrearLayers = null;
+
+// ACOMPANHAMENTO AUTOMÁTICO
+let acomMap = null;
+let acomLayers = null;
+let acomInterval = null;
+
+async function loadAcompanhar() {
+  try {
+    const r = await api('/acompanhar');
+    const j = await r.json();
+    if (!j.ok) return;
+    const ordens = j.ordens || [];
+
+    if (!ordens.length) {
+      document.getElementById('acomMapCard').style.display = 'none';
+      if (acomMap) { acomMap.remove(); acomMap = null; acomLayers = null; }
+      if (acomInterval) { clearInterval(acomInterval); acomInterval = null; }
+      return;
+    }
+
+    // Tem ordens ativas — mostra mapa
+    document.getElementById('acomMapCard').style.display = 'block';
+    if (!acomMap) {
+      acomMap = L.map('acomMap', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 14);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(acomMap);
+      acomLayers = L.layerGroup().addTo(acomMap);
+      setTimeout(() => acomMap.invalidateSize(), 100);
+    }
+    acomLayers.clearLayers();
+
+    // Info text
+    const infoParts = ordens.map(o => `${o.protocolo} — ${o.status} — ${o.entregador_nome || 'sem entregador'}`);
+    document.getElementById('acomInfo').innerHTML = infoParts.join('<br>');
+
+    const allPoints = [];
+
+    ordens.forEach(o => {
+      // Origem (verde)
+      if (o.origem) {
+        const origIcon = L.divIcon({ className: '', html: '<div style="background:#00d4aa;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">🏠</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+        L.marker([o.origem.lat, o.origem.lng], { icon: origIcon }).addTo(acomLayers).bindPopup(`<b>Origem</b><br>${o.protocolo}`);
+        allPoints.push([o.origem.lat, o.origem.lng]);
+      }
+      // Destino (vermelho)
+      if (o.destino) {
+        const destIcon = L.divIcon({ className: '', html: '<div style="background:#e76f51;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">📍</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+        L.marker([o.destino.lat, o.destino.lng], { icon: destIcon }).addTo(acomLayers).bindPopup(`<b>Destino</b><br>${o.protocolo}<br>${o.entregador_nome || ''}`);
+        allPoints.push([o.destino.lat, o.destino.lng]);
+      }
+      // Trilha
+      if (o.trilha && o.trilha.length > 1) {
+        const points = o.trilha.map(t => [t.lat, t.lng]);
+        L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(acomLayers);
+        allPoints.push([o.trilha[0].lat, o.trilha[0].lng]);
+        allPoints.push([o.trilha[o.trilha.length-1].lat, o.trilha[o.trilha.length-1].lng]);
+      }
+      // Entregador (azul)
+      if (o.entregador_localizacao) {
+        const loc = o.entregador_localizacao;
+        const entIcon = L.divIcon({ className: '', html: '<div style="background:#3a86ff;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)">' + (o.entregador_nome || 'E').charAt(0) + '</div>', iconSize: [32, 32], iconAnchor: [16, 16] });
+        L.marker([loc.lat, loc.lng], { icon: entIcon }).addTo(acomLayers).bindPopup(`<b>${o.entregador_nome || 'Entregador'}</b><br>${o.protocolo}<br>${o.status}`);
+        allPoints.push([loc.lat, loc.lng]);
+      }
+    });
+
+    // Ajusta zoom para mostrar todos os pontos
+    if (allPoints.length > 1) {
+      acomMap.fitBounds(allPoints, { padding: [50, 50] });
+    } else if (allPoints.length === 1) {
+      acomMap.setView(allPoints[0], 15);
+    }
+
+    // Inicia polling se ainda não tiver
+    if (!acomInterval) {
+      acomInterval = setInterval(loadAcompanhar, 10000);
+    }
+  } catch (err) { /* silencioso */ }
+}
 
 async function rastrear(ordemId) {
   document.getElementById('rastrearModal').style.display = 'flex';

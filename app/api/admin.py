@@ -51,6 +51,21 @@ def _err(msg: str, code: int = 400):
     return jsonify({"error": msg}), code
 
 
+def _resolve_coords(url: str) -> dict | None:
+    """Resolve URL do Google Maps e extrai coordenadas."""
+    if not url:
+        return None
+    try:
+        from app.core.frete import extract_lat_lng, resolve_short_url
+        resolved = resolve_short_url(url)
+        coords = extract_lat_lng(resolved)
+        if coords:
+            return {"lat": coords[0], "lng": coords[1]}
+    except Exception:
+        pass
+    return None
+
+
 # ============================================================
 # Autenticação
 # ============================================================
@@ -174,6 +189,8 @@ def monitoramento():
                 "taxa": float(r["taxa"] or 0),
                 "entregador_id": r.get("entregador_id"),
                 "payload": payload,
+                "coords": _resolve_coords(payload.get("client_maps_url", "")),
+                "origem_coords": _resolve_coords(payload.get("origin_maps_url", "")),
                 "criado_em": r.get("criado_em").isoformat() if r.get("criado_em") else None,
             })
 

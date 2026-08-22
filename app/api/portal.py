@@ -558,3 +558,90 @@ def rastrear_ordem(ordem_id: int):
         "entregador": entregador,
         "trilha": trilha,
     })
+
+
+# ============================================================
+# Acompanhamento — todas as ordens ativas com rastreamento
+# ============================================================
+
+@bp.get("/acompanhar")
+def acompanhar():
+    """Retorna todas as ordens ativas (ATRIBUIDO/EM_ROTA) com posição do entregador e trilha."""
+    user = _requer_cliente()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    empresa_id = user.get("empresa_id")
+    if not empresa_id:
+        return _err("sem_empresa_vinculada", 400)
+
+    from app.core.frete import extract_lat_lng, resolve_short_url
+
+    with connect() as conn:
+        cur = conn.cursor()
+        # Ordens ativas com entregador
+        cur.execute("""
+            SELECT o.id, o.protocolo, o.status, o.taxa, o.entregador_id,
+                   o.payload_json, u.nome as entregador_nome,
+                   u.localizacao_atual, u.ultima_localizacao_em
+            FROM ordens_servico o
+            LEFT JOIN usuarios u ON u.id = o.entregador_id
+            WHERE o.empresa_id = %s AND o.status IN ('ATRIBUIDO', 'EM_ROTA')
+            ORDER BY o.criado_em DESC
+        """, (empresa_id,))
+        items = []
+        for r in (dict(x) for x in cur.fetchall()):
+            payload = r.get("payload_json")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+
+            # Coords do destino
+            client_url = payload.get("client_maps_url", "")
+            dest_coords = None
+            if client_url:
+                resolved = resolve_short_url(client_url)
+                dest_coords = extract_lat_lng(resolved)
+
+            # Coords da origem
+            origin_url = payload.get("origin_maps_url", "")
+            origin_coords = None
+            if origin_url:
+                resolved = resolve_short_url(origin_url)
+                origin_coords = extract_lat_lng(resolved)
+
+            # Localização do entregador
+            loc = r.get("localizacao_atual")
+            if isinstance(loc, str):
+                try:
+                    loc = json.loads(loc)
+                except Exception:
+                    loc = None
+
+            # Trilha
+            trilha = []
+            if r.get("entregador_id"):
+                cur.execute("""
+                    SELECT lat, lng FROM rastreamento
+                    WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 50
+                """, (r["entregador_id"],))
+                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
+                trilha.reverse()
+
+            items.append({
+                "id": r["id"],
+                "protocolo": r.get("protocolo"),
+                "status": r["status"],
+                "taxa": float(r["taxa"] or 0),
+                "entregador_id": r.get("entregador_id"),
+                "entregador_nome": r.get("entregador_nome"),
+                "entregador_localizacao": loc,
+                "ultima_localizacao_em": r.get("ultima_localizacao_em").isoformat() if r.get("ultima_localizacao_em") else None,
+                "destino": {"lat": dest_coords[0], "lng": dest_coords[1]} if dest_coords else None,
+                "origem": {"lat": origin_coords[0], "lng": origin_coords[1]} if origin_coords else None,
+                "trilha": trilha,
+            })
+
+    return jsonify({"ok": True, "ordens": items})

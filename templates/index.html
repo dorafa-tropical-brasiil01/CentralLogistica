@@ -227,6 +227,11 @@
     const API = '/api/pwa';
     let token = sessionStorage.getItem('remo_token') || '';
     let currentUser = null;
+
+    // Registra Service Worker imediatamente (para push funcionar mesmo antes do login)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/static/sw.js').catch(e => console.error('[SW] register falhou:', e));
+    }
     let assignOrdemId = null;
     let pendentes = [];
     let entregadores = [];
@@ -876,29 +881,38 @@
         btn.disabled = true;
         return;
       }
-      // Timeout de 5s — se não resolver, mostra botão manual
+      // Registra o SW imediatamente (se ainda não estiver)
+      try {
+        await navigator.serviceWorker.register('/static/sw.js');
+      } catch (e) { console.error('[Push] SW register falhou:', e); }
+
+      // Timeout de 10s — se não resolver, mostra botão manual
       let resolved = false;
       const timeout = setTimeout(() => {
         if (!resolved) {
           btn.textContent = '🔔 Ativar notificações';
         }
-      }, 5000);
+      }, 10000);
       try {
         const r = await api('/push/vapid-public-key');
         if (!r.ok) { clearTimeout(timeout); resolved = true; btn.textContent = '🔔 Push indisponível'; return; }
         const j = await r.json();
         if (!j.public_key) { clearTimeout(timeout); resolved = true; btn.textContent = '🔔 Push indisponível'; return; }
-        // Aguarda service worker ficar pronto (com timeout)
+        // Aguarda service worker ficar pronto (com timeout maior)
         let reg;
         try {
           reg = await Promise.race([
             navigator.serviceWorker.ready,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('sw_timeout')), 3000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('sw_timeout')), 8000))
           ]);
         } catch (swErr) {
-          clearTimeout(timeout); resolved = true;
-          btn.textContent = '🔔 Ativar notificações';
-          return;
+          // Tenta registrar novamente
+          try { reg = await navigator.serviceWorker.register('/static/sw.js'); } catch (e2) { reg = null; }
+          if (!reg) {
+            clearTimeout(timeout); resolved = true;
+            btn.textContent = '🔔 Ativar notificações';
+            return;
+          }
         }
         const existing = await reg.pushManager.getSubscription();
         clearTimeout(timeout); resolved = true;
