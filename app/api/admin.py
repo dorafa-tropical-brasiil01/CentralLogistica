@@ -226,9 +226,9 @@ def monitoramento():
                 "corrida_ativa": corrida_ativa,
             })
 
-        # Trilha de rastreamento para entregadores com corrida ativa
+        # Trilha de rastreamento para entregadores com localização
         for ent in entregadores:
-            if ent.get("corrida_ativa") and ent.get("localizacao"):
+            if ent.get("localizacao"):
                 cur.execute("""
                     SELECT lat, lng, criado_em
                     FROM rastreamento
