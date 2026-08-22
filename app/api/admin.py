@@ -70,6 +70,41 @@ def _resolve_coords(url: str) -> dict | None:
 # Autenticação
 # ============================================================
 
+@bp.post("/setup")
+def setup():
+    """Cria usuários padrão se não existirem. Endpoint emergencial."""
+    from app.services.auth import _hash_senha, _gerar_salt
+    from app.core.db import transaction
+    import logging
+
+    criados = []
+    usuarios_padrao = [
+        {"username": "admin", "nome": "Administrador", "perfil": "ADMIN", "senha": "admin123"},
+        {"username": "empresa-teste", "nome": "Empresa Teste", "perfil": "EMPRESA", "senha": "teste123"},
+    ]
+
+    try:
+        with transaction() as conn:
+            cur = conn.cursor()
+            for u in usuarios_padrao:
+                cur.execute("SELECT id FROM usuarios WHERE username = %s", (u["username"],))
+                existing = cur.fetchone()
+                if not existing:
+                    salt = _gerar_salt()
+                    hash_senha = _hash_senha(u["senha"], salt)
+                    cur.execute(
+                        """INSERT INTO usuarios (username, nome, perfil, senha_hash, senha_salt, ativo)
+                           VALUES (%s, %s, %s, %s, %s, true) RETURNING id""",
+                        (u["username"], u["nome"], u["perfil"], hash_senha, salt),
+                    )
+                    new_id = cur.fetchone()["id"]
+                    criados.append({"username": u["username"], "id": new_id})
+                    logging.info("setup: criado usuario %s (id=%s)", u["username"], new_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, "criados": criados, "mensagem": "Usuarios padrao criados" if criados else "Usuarios ja existiam"})
+
 @bp.post("/login")
 def login():
     data = request.get_json(silent=True) or {}
