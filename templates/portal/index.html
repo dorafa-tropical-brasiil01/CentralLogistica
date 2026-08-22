@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Portal do Cliente — REMO Logística</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {
       --brand: #0a2540; --brand-2: #123a5e; --accent: #00d4aa; --accent-2: #00b894;
@@ -31,6 +33,8 @@
     .form-group input:focus { outline: none; border-color: var(--accent); }
     .form-row { display: flex; gap: 12px; }
     @media (max-width: 600px) { .form-row { flex-direction: column; gap: 0; } }
+    #entMap { height: 300px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin: 10px 0; }
+    .map-marker-popup { font-size: 13px; line-height: 1.4; }
     .btn { border: 0; border-radius: var(--radius-sm); padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .15s; }
     .btn-primary { background: var(--accent); color: #002c22; width: 100%; }
     .btn-primary:hover { filter: brightness(1.05); }
@@ -221,6 +225,11 @@
           <div class="form-group">
             <label>Endereço completo (referência)</label>
             <input id="entEndereco" type="text" placeholder="Ex: Rua das Flores, 123 - Centro" />
+          </div>
+          <div id="entMapWrap" style="display:none">
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:5px">Confirme os pontos no mapa</label>
+            <div id="entMap"></div>
+            <small style="color:var(--text-3);font-size:11px">🟢 Origem (seu estabelecimento) • 🔴 Destino (cliente). Arraste os marcadores para ajustar.</small>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -416,12 +425,58 @@ function switchTab(el, name) {
 
 // NOVA ENTREGA
 let freteCalculado = null;
+let entMap = null;
+let originMarker = null;
+let destMarker = null;
+
+function initEntMap() {
+  if (entMap) { entMap.remove(); entMap = null; }
+  entMap = L.map('entMap', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(entMap);
+}
+
+function atualizarMapa(coordsDest, coordsOrig) {
+  const wrap = document.getElementById('entMapWrap');
+  if (!coordsDest) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  if (!entMap) initEntMap();
+  setTimeout(() => entMap.invalidateSize(), 100);
+
+  // Marcador destino (vermelho)
+  if (destMarker) entMap.removeLayer(destMarker);
+  const destIcon = L.divIcon({ className: '', html: '<div style="background:#e76f51;color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">📍</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+  destMarker = L.marker(coordsDest, { icon: destIcon, draggable: true }).addTo(entMap).bindPopup('<div class="map-marker-popup"><b>Destino</b><br>Arraste para ajustar</div>');
+  destMarker.on('dragend', e => {
+    const p = e.target.getLatLng();
+    const newUrl = `https://www.google.com/maps?q=${p.lat},${p.lng}`;
+    document.getElementById('entMapsUrl').value = newUrl;
+    calcularFrete();
+  });
+
+  // Marcador origem (verde) — se tiver
+  if (coordsOrig) {
+    if (originMarker) entMap.removeLayer(originMarker);
+    const origIcon = L.divIcon({ className: '', html: '<div style="background:#00d4aa;color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">🏠</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+    originMarker = L.marker(coordsOrig, { icon: origIcon, draggable: true }).addTo(entMap).bindPopup('<div class="map-marker-popup"><b>Origem</b><br>Seu estabelecimento</div>');
+    originMarker.on('dragend', e => {
+      const p = e.target.getLatLng();
+      const newUrl = `https://www.google.com/maps?q=${p.lat},${p.lng}`;
+      document.getElementById('entOriginUrl').value = newUrl;
+      calcularFrete();
+    });
+    // Ajusta view para mostrar ambos
+    const bounds = L.latLngBounds([coordsDest, coordsOrig]);
+    entMap.fitBounds(bounds, { padding: [50, 50] });
+  } else {
+    entMap.setView(coordsDest, 16);
+  }
+}
 
 async function calcularFrete() {
   const url = document.getElementById('entMapsUrl').value.trim();
   const origin = document.getElementById('entOriginUrl').value.trim();
   const preview = document.getElementById('fretePreview');
-  if (!url) { preview.style.display = 'none'; freteCalculado = null; return; }
+  if (!url) { preview.style.display = 'none'; freteCalculado = null; document.getElementById('entMapWrap').style.display = 'none'; return; }
   try {
     const r = await api('/ordens/calcular-frete', {
       method: 'POST',
@@ -440,6 +495,23 @@ async function calcularFrete() {
         alerta.textContent = '⚠ Saldo insuficiente. Recarregue sua carteira para criar esta entrega.';
       } else {
         alerta.style.display = 'none';
+      }
+      // Atualiza mapa com coords do debug
+      if (j.debug && j.debug.coords_encontradas) {
+        const coordsDest = j.debug.coords_encontradas;
+        let coordsOrig = null;
+        if (origin) {
+          // Tenta extrair coords da origem também
+          const r2 = await api('/ordens/calcular-frete', {
+            method: 'POST',
+            body: JSON.stringify({ client_maps_url: origin, origin_maps_url: origin }),
+          });
+          const j2 = await r2.json();
+          if (j2.debug && j2.debug.coords_encontradas) {
+            coordsOrig = j2.debug.coords_encontradas;
+          }
+        }
+        atualizarMapa(coordsDest, coordsOrig);
       }
     }
   } catch (err) { /* silencioso */ }
@@ -471,6 +543,8 @@ async function criarEntrega(e) {
       document.getElementById('entEndereco').value = '';
       document.getElementById('entObs').value = '';
       document.getElementById('fretePreview').style.display = 'none';
+      document.getElementById('entMapWrap').style.display = 'none';
+      if (entMap) { entMap.remove(); entMap = null; originMarker = null; destMarker = null; }
       // Atualiza saldo e ordens
       loadCarteira();
       // Volta para aba de ordens
