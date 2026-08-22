@@ -117,33 +117,33 @@ def enviar_notificacao(
 
     enviadas = 0
     # Prepara a chave privada VAPID
+    # py_vapid.from_string() não detecta PEM — precisa de base64url DER
     vapid_key_raw = config.VAPID_PRIVATE_KEY
-    vapid_key = None
+    vapid_key = vapid_key_raw
     try:
-        if "|" in vapid_key_raw:
-            # Formato com | como separador — reconstrói PEM corretamente
-            parts = [p.strip() for p in vapid_key_raw.split("|") if p.strip()]
-            vapid_key = "\n".join(parts) + "\n"
-        elif "-----BEGIN" in vapid_key_raw:
-            vapid_key = vapid_key_raw
-        else:
-            vapid_key = vapid_key_raw
-        logger.info("VAPID key processada (len=%s, primeiros 40): %s", len(vapid_key), vapid_key[:40])
+        from cryptography.hazmat.primitives.serialization import (
+            load_pem_private_key, Encoding, PrivateFormat, NoEncryption
+        )
+        import base64 as _b64
 
-        # Tenta parsear a chave para validar e re-serializar em PEM limpo
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key, Encoding, PrivateFormat, NoEncryption
-        try:
-            parsed = load_pem_private_key(vapid_key.encode() if isinstance(vapid_key, str) else vapid_key, password=None)
-            logger.info("VAPID key parseada com sucesso: %s", type(parsed).__name__)
-            # Re-serializa em PEM limpo (sem espaços/quebras erradas)
-            vapid_key = parsed.private_bytes(
-                encoding=Encoding.PEM,
-                format=PrivateFormat.PKCS8,
-                encryption_algorithm=NoEncryption(),
-            ).decode("utf-8")
-            logger.info("VAPID key re-serializada para PEM limpo (len=%s)", len(vapid_key))
-        except Exception as parse_err:
-            logger.warning("VAPID key: falha ao parsear PEM, tentando como string: %s", parse_err)
+        if "|" in vapid_key_raw:
+            # Formato com | como separador — reconstrói PEM
+            parts = [p.strip() for p in vapid_key_raw.split("|") if p.strip()]
+            pem_str = "\n".join(parts) + "\n"
+        elif "-----BEGIN" in vapid_key_raw:
+            pem_str = vapid_key_raw
+        else:
+            pem_str = None
+
+        if pem_str:
+            # Parse PEM e converte para base64url DER (formato que py_vapid aceita)
+            parsed = load_pem_private_key(pem_str.encode("utf-8"), password=None)
+            der_bytes = parsed.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+            vapid_key = _b64.urlsafe_b64encode(der_bytes).decode("utf-8").rstrip("=")
+            logger.info("VAPID key convertida PEM -> base64url DER (len=%s)", len(vapid_key))
+        else:
+            # Já está em base64url DER ou outro formato — usa direto
+            logger.info("VAPID key usada direto (len=%s)", len(vapid_key))
     except Exception as e:
         logger.error("Erro ao preparar VAPID key: %s", e)
 
