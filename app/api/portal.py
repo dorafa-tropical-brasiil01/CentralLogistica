@@ -113,7 +113,8 @@ def carteira():
         cur = conn.cursor()
         cur.execute("""
             SELECT c.id, c.empresa_id, e.nome as empresa_nome,
-                   c.saldo_atual, c.ativo, c.criado_em
+                   c.saldo_atual, c.ativo, c.criado_em,
+                   e.endereco, e.config
             FROM carteiras c
             LEFT JOIN empresas e ON e.id = c.empresa_id
             WHERE c.empresa_id = %s
@@ -123,6 +124,34 @@ def carteira():
             return _err("carteira_nao_encontrada", 404)
         c = dict(row)
 
+    # Extrai coords da empresa (do endereco ou config)
+    empresa_coords = None
+    endereco = c.get("endereco")
+    if isinstance(endereco, str):
+        try:
+            import json as _json
+            endereco = _json.loads(endereco)
+        except Exception:
+            endereco = None
+    if endereco and isinstance(endereco, dict):
+        lat = endereco.get("lat") or endereco.get("latitude")
+        lng = endereco.get("lng") or endereco.get("longitude")
+        if lat is not None and lng is not None:
+            empresa_coords = {"lat": float(lat), "lng": float(lng)}
+    if not empresa_coords:
+        config = c.get("config")
+        if isinstance(config, str):
+            try:
+                import json as _json
+                config = _json.loads(config)
+            except Exception:
+                config = None
+        if config and isinstance(config, dict):
+            lat = config.get("lat") or config.get("latitude") or config.get("map_center", {}).get("lat")
+            lng = config.get("lng") or config.get("longitude") or config.get("map_center", {}).get("lng")
+            if lat is not None and lng is not None:
+                empresa_coords = {"lat": float(lat), "lng": float(lng)}
+
     return jsonify({
         "ok": True,
         "carteira": {
@@ -131,6 +160,7 @@ def carteira():
             "empresa_id": c.get("empresa_id"),
             "saldo": float(c["saldo_atual"] or 0),
             "ativo": c.get("ativo"),
+            "coords": empresa_coords,
         },
     })
 

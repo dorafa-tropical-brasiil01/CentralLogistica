@@ -660,6 +660,10 @@ function initMap() {
   markersLayer = L.layerGroup().addTo(map);
   zonesLayer = L.layerGroup().addTo(map);
   routesLayer = L.layerGroup().addTo(map);
+  // Marca interação do usuário para não resetar zoom/pan no polling
+  map._userInteracted = false;
+  map.on('zoomstart', () => { map._userInteracted = true; });
+  map.on('dragstart', () => { map._userInteracted = true; });
 }
 
 async function carregarCidades() {
@@ -680,6 +684,7 @@ async function carregarCidades() {
 
 function onCidadeChange() {
   const cidade = document.getElementById('monCidade').value;
+  if (map) map._userInteracted = false;
   if (cidade && cidadesCoords[cidade]) {
     const c = cidadesCoords[cidade];
     map.setView([c.lat, c.lng], 14);
@@ -750,8 +755,8 @@ async function loadMonitor() {
     // Atualiza coordenadas das cidades
     if (j.cidades_coords) cidadesCoords = j.cidades_coords;
 
-    // Se cidade selecionada tem coords, centraliza
-    if (cidade && cidadesCoords[cidade]) {
+    // Se cidade selecionada tem coords, centraliza (apenas na primeira carga ou mudança de cidade)
+    if (cidade && cidadesCoords[cidade] && !map._userInteracted) {
       const c = cidadesCoords[cidade];
       map.setView([c.lat, c.lng], 14);
     }
@@ -782,14 +787,14 @@ async function loadMonitor() {
       // Rota planejada (azul tracejado, seguindo ruas)
       if (o.rota_planejada && o.rota_planejada.length > 1) {
         const routePoints = o.rota_planejada.map(p => [p.lat, p.lng]);
-        L.polyline(routePoints, { color: '#3a86ff', weight: 3, opacity: .5, dashArray: '8,8' }).addTo(routesLayer);
+        L.polyline(routePoints, { color: '#3a86ff', weight: 3, opacity: .5 }).addTo(routesLayer);
       }
 
       // Rota: linha reta entre entregador e destino (fallback se não tem rota planejada)
       if (o.entregador_id && !o.rota_planejada) {
         const ent = j.entregadores.find(e => e.id === o.entregador_id);
         if (ent && ent.localizacao) {
-          L.polyline([[ent.localizacao.lat, ent.localizacao.lng], coords], { color: '#3a86ff', weight: 3, opacity: .7, dashArray: '8,8' }).addTo(routesLayer);
+          L.polyline([[ent.localizacao.lat, ent.localizacao.lng], coords], { color: '#3a86ff', weight: 3, opacity: .7 }).addTo(routesLayer);
         }
       }
     });

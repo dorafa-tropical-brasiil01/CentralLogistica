@@ -1086,6 +1086,46 @@ def listar_empresas():
     return jsonify({"ok": True, "empresas": items})
 
 
+@bp.put("/empresas/<empresa_id>/endereco")
+def atualizar_endereco_empresa(empresa_id: str):
+    """Atualiza endereço/coords da empresa para centralizar o mapa do portal."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    lat = data.get("lat")
+    lng = data.get("lng")
+    cidade = data.get("cidade")
+    if lat is None or lng is None:
+        return _err("lat e lng obrigatorios", 400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (TypeError, ValueError):
+        return _err("lat e lng devem ser numeros", 400)
+
+    import json as _json
+    endereco = {"lat": lat, "lng": lng}
+    if cidade:
+        endereco["cidade"] = cidade
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM empresas WHERE id = %s", (empresa_id,))
+        if not cur.fetchone():
+            return _err("empresa_nao_encontrada", 404)
+        cur.execute(
+            "UPDATE empresas SET endereco = %s WHERE id = %s RETURNING id",
+            (_json.dumps(endereco), empresa_id),
+        )
+        if not cur.fetchone():
+            return _err("erro_ao_salvar", 500)
+
+    return jsonify({"ok": True, "endereco": endereco})
+
+
 @bp.put("/empresas/<empresa_id>/comissao")
 def atualizar_comissao(empresa_id: str):
     """Atualiza o percentual de comissão do entregador para uma empresa."""
