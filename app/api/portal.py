@@ -330,3 +330,128 @@ def ordens():
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+# ============================================================
+# Criar ordem manual (pedido por telefone)
+# ============================================================
+
+@bp.post("/ordens/criar")
+def criar_ordem_manual():
+    """Cliente cria uma O.S. manualmente (pedido por telefone, etc)."""
+    user = _requer_cliente()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    empresa_id = user.get("empresa_id")
+    if not empresa_id:
+        return _err("sem_empresa_vinculada", 400)
+
+    data = request.get_json(silent=True) or {}
+
+    # Campos obrigatórios
+    cliente_nome = str(data.get("cliente_nome") or "").strip()
+    client_maps_url = str(data.get("client_maps_url") or "").strip()
+    origin_maps_url = str(data.get("origin_maps_url") or "").strip()
+
+    if not cliente_nome:
+        return _err("cliente_nome_obrigatorio"), 400
+    if not client_maps_url:
+        return _err("endereco_destino_obrigatorio"), 400
+
+    # Campos opcionais
+    cliente_whatsapp = str(data.get("cliente_whatsapp") or "").strip() or None
+    cliente_endereco = str(data.get("cliente_endereco") or "").strip() or None
+    observacoes = str(data.get("observacoes") or "").strip() or None
+    taxa_manual = data.get("taxa_manual")  # se o cliente quiser forçar uma taxa
+
+    # Gera solicitacao_id único
+    import uuid as _uuid
+    solicitacao_id = f"MANUAL-{_uuid.uuid4().hex[:16].upper()}"
+
+    # Payload com dados do cliente
+    payload = {
+        "cliente_nome": cliente_nome,
+        "cliente_whatsapp": cliente_whatsapp,
+        "cliente_endereco": cliente_endereco,
+        "observacoes": observacoes,
+        "tipo_entrega": "DELIVERY",
+        "origem": "PORTAL_MANUAL",
+        "total": 0.0,
+    }
+
+    try:
+        from app.services import ordens as ordens_service
+        taxa_cliente = float(taxa_manual) if taxa_manual else 0.0
+        ordem = ordens_service.criar(
+            empresa_id=empresa_id,
+            solicitacao_id=solicitacao_id,
+            taxa_cliente=taxa_cliente,
+            origin_maps_url=origin_maps_url or None,
+            client_maps_url=client_maps_url,
+            payload=payload,
+        )
+    except RuntimeError as e:
+        if str(e) == "saldo_insuficiente":
+            return _err("saldo_insuficiente"), 402
+        return _err(str(e)), 400
+
+    # Notifica entregadores via push
+    try:
+        from app.services import push as push_service
+        push_service.notificar_entregadores_disponiveis(
+            ordem_id=ordem.get("id"),
+            protocolo=ordem.get("protocolo", ""),
+            taxa=float(ordem.get("taxa") or 0),
+        )
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "ordem": ordem}), 201
+
+
+# ============================================================
+# Calcular frete (pré-visualização antes de criar)
+# ============================================================
+
+@bp.post("/ordens/calcular-frete")
+def calcular_frete():
+    """Calcula o frete antes de criar a ordem."""
+    user = _requer_cliente()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    empresa_id = user.get("empresa_id")
+    if not empresa_id:
+        return _err("sem_empresa_vinculada", 400)
+
+    data = request.get_json(silent=True) or {}
+    client_maps_url = str(data.get("client_maps_url") or "").strip()
+    origin_maps_url = str(data.get("origin_maps_url") or "").strip()
+
+    if not client_maps_url:
+        return _err("endereco_destino_obrigatorio"), 400
+
+    try:
+        from app.services.ordens import _calcular_frete_real
+        taxa = _calcular_frete_real(
+            empresa_id=empresa_id,
+            origin_maps_url=origin_maps_url or None,
+            client_maps_url=client_maps_url,
+        )
+        if taxa is None:
+            taxa = 0.0
+    except Exception as e:
+        return _err(f"erro_calcular_frete: {e}"), 500
+
+    # Verifica saldo
+    from app.repositories import carteiras as cart_repo
+    carteira = cart_repo.get_by_empresa(empresa_id)
+    saldo = float(carteira["saldo_atual"]) if carteira else 0.0
+
+    return jsonify({
+        "ok": True,
+        "taxa": float(taxa),
+        "saldo": saldo,
+        "saldo_suficiente": saldo >= float(taxa),
+    })

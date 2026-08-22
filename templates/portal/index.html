@@ -29,6 +29,8 @@
     .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 5px; }
     .form-group input, .form-group select { width: 100%; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
     .form-group input:focus { outline: none; border-color: var(--accent); }
+    .form-row { display: flex; gap: 12px; }
+    @media (max-width: 600px) { .form-row { flex-direction: column; gap: 0; } }
     .btn { border: 0; border-radius: var(--radius-sm); padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .15s; }
     .btn-primary { background: var(--accent); color: #002c22; width: 100%; }
     .btn-primary:hover { filter: brightness(1.05); }
@@ -185,8 +187,61 @@
     <!-- TABS -->
     <div class="tabs">
       <div class="tab active" onclick="switchTab(this, 'ordens')">Entregas (24h)</div>
+      <div class="tab" onclick="switchTab(this, 'nova')">Nova Entrega</div>
       <div class="tab" onclick="switchTab(this, 'extrato')">Extrato</div>
       <div class="tab" onclick="switchTab(this, 'recargas')">Recargas</div>
+    </div>
+
+    <!-- MÓDULO: NOVA ENTREGA -->
+    <div class="module" id="mod-nova">
+      <div class="card">
+        <div class="card-title">Criar entrega (pedido por telefone)</div>
+        <p style="color:var(--text-2);font-size:13px;margin-bottom:16px">Use quando receber pedido por ligação e precisar criar uma O.S. para entrega.</p>
+        <form onsubmit="criarEntrega(event)">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Nome do cliente *</label>
+              <input id="entNome" type="text" placeholder="Ex: João da Silva" required />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>WhatsApp</label>
+              <input id="entWhats" type="text" placeholder="62 9 9999-9999" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Endereço de destino (Google Maps) *</label>
+            <input id="entMapsUrl" type="text" placeholder="Cole o link do Google Maps do destino" required onblur="calcularFrete()" />
+            <small style="color:var(--text-3);font-size:11px">Abra o Google Maps, busque o endereço, clique em "Compartilhar" e cole o link aqui.</small>
+          </div>
+          <div class="form-group">
+            <label>Endereço de origem (Google Maps)</label>
+            <input id="entOriginUrl" type="text" placeholder="Cole o link do Google Maps da origem (seu estabelecimento)" />
+            <small style="color:var(--text-3);font-size:11px">Deixe vazio para usar o endereço padrão cadastrado.</small>
+          </div>
+          <div class="form-group">
+            <label>Endereço completo (referência)</label>
+            <input id="entEndereco" type="text" placeholder="Ex: Rua das Flores, 123 - Centro" />
+          </div>
+          <div class="form-group">
+            <label>Observações</label>
+            <textarea id="entObs" rows="2" placeholder="Ex: Entregar na portaria, ligar antes de chegar, etc." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px"></textarea>
+          </div>
+          <div id="fretePreview" style="background:var(--surface-2);border-radius:10px;padding:14px;margin:12px 0;display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:12px;color:var(--text-3);font-weight:700">Frete calculado</div>
+                <div id="freteValor" style="font-size:24px;font-weight:900;color:var(--accent)">R$ 0,00</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:12px;color:var(--text-3);font-weight:700">Seu saldo</div>
+                <div id="freteSaldo" style="font-size:18px;font-weight:900">R$ 0,00</div>
+              </div>
+            </div>
+            <div id="freteAlerta" style="margin-top:8px;font-size:12px;display:none"></div>
+          </div>
+          <button class="btn btn-accent" type="submit" id="btnCriarEntrega" style="width:100%;padding:14px;font-size:16px;font-weight:900">Criar entrega</button>
+        </form>
+      </div>
     </div>
 
     <!-- MÓDULO: ORDENS -->
@@ -356,6 +411,82 @@ function switchTab(el, name) {
   document.getElementById('mod-' + name).classList.add('active');
   if (name === 'extrato') loadExtrato();
   if (name === 'recargas') loadRecargas();
+  if (name === 'ordens') loadOrdens();
+}
+
+// NOVA ENTREGA
+let freteCalculado = null;
+
+async function calcularFrete() {
+  const url = document.getElementById('entMapsUrl').value.trim();
+  const origin = document.getElementById('entOriginUrl').value.trim();
+  const preview = document.getElementById('fretePreview');
+  if (!url) { preview.style.display = 'none'; freteCalculado = null; return; }
+  try {
+    const r = await api('/ordens/calcular-frete', {
+      method: 'POST',
+      body: JSON.stringify({ client_maps_url: url, origin_maps_url: origin }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      freteCalculado = j.taxa;
+      preview.style.display = 'block';
+      document.getElementById('freteValor').textContent = money(j.taxa);
+      document.getElementById('freteSaldo').textContent = money(j.saldo);
+      const alerta = document.getElementById('freteAlerta');
+      if (!j.saldo_suficiente) {
+        alerta.style.display = 'block';
+        alerta.style.color = 'var(--danger)';
+        alerta.textContent = '⚠ Saldo insuficiente. Recarregue sua carteira para criar esta entrega.';
+      } else {
+        alerta.style.display = 'none';
+      }
+    }
+  } catch (err) { /* silencioso */ }
+}
+
+async function criarEntrega(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btnCriarEntrega');
+  btn.disabled = true;
+  btn.textContent = 'Criando...';
+  try {
+    const body = {
+      cliente_nome: document.getElementById('entNome').value.trim(),
+      cliente_whatsapp: document.getElementById('entWhats').value.trim(),
+      client_maps_url: document.getElementById('entMapsUrl').value.trim(),
+      origin_maps_url: document.getElementById('entOriginUrl').value.trim(),
+      cliente_endereco: document.getElementById('entEndereco').value.trim(),
+      observacoes: document.getElementById('entObs').value.trim(),
+    };
+    const r = await api('/ordens/criar', { method: 'POST', body: JSON.stringify(body) });
+    const j = await r.json();
+    if (j.ok) {
+      alert('Entrega criada!\nProtocolo: ' + j.ordem.protocolo + '\nFrete: ' + money(j.ordem.taxa));
+      // Limpa form
+      document.getElementById('entNome').value = '';
+      document.getElementById('entWhats').value = '';
+      document.getElementById('entMapsUrl').value = '';
+      document.getElementById('entOriginUrl').value = '';
+      document.getElementById('entEndereco').value = '';
+      document.getElementById('entObs').value = '';
+      document.getElementById('fretePreview').style.display = 'none';
+      // Atualiza saldo e ordens
+      loadCarteira();
+      // Volta para aba de ordens
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+      document.querySelectorAll('.tab')[0].classList.add('active');
+      document.getElementById('mod-ordens').classList.add('active');
+      loadOrdens();
+    } else {
+      alert('Erro: ' + (j.error || 'desconhecido'));
+    }
+  } catch (err) {
+    alert('Erro de conexão: ' + err.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Criar entrega';
 }
 
 // CARTEIRA
