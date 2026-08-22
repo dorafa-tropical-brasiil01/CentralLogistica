@@ -140,7 +140,7 @@ def enviar_notificacao(
                 encoding=Encoding.PEM,
                 format=PrivateFormat.PKCS8,
                 encryption_algorithm=NoEncryption(),
-            )
+            ).decode("utf-8")
             logger.info("VAPID key re-serializada para PEM limpo (len=%s)", len(vapid_key))
         except Exception as parse_err:
             logger.warning("VAPID key: falha ao parsear PEM, tentando como string: %s", parse_err)
