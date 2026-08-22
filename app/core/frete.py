@@ -44,6 +44,28 @@ def resolve_short_url(url: str) -> str:
         return url
 
 
+def geocode_address(address: str) -> tuple[float, float] | None:
+    """Geocodifica um endereço usando Nominatim (OpenStreetMap) — gratuito."""
+    import requests
+    from urllib.parse import unquote
+    address = unquote(str(address or "").strip())
+    if not address:
+        return None
+    try:
+        r = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": address, "format": "json", "limit": 1},
+            headers={"User-Agent": "REMO-Logistica/1.0"},
+            timeout=5,
+        )
+        data = r.json()
+        if data and len(data) > 0:
+            return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception:
+        pass
+    return None
+
+
 def extract_lat_lng(s: str) -> tuple[float, float] | None:
     """Extrai latitude/longitude de uma URL ou texto do Google Maps."""
     s = str(s or "").strip()
@@ -87,6 +109,14 @@ def extract_lat_lng(s: str) -> tuple[float, float] | None:
             return float(m.group(1)), float(m.group(2))
         except Exception:
             return None
+
+    # Fallback: se é URL do Google Maps, extrai nome do lugar e geocodifica
+    if "google.com/maps" in s or "maps.google" in s:
+        from urllib.parse import unquote
+        m = re.search(r"/place/([^/]+)", s)
+        if m:
+            place = unquote(m.group(1).replace("+", " "))
+            return geocode_address(place)
 
     return None
 
