@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, session
 
-from app.core.db import connect
+from app.core.db import connect, transaction
 from app.repositories import ordens as ordens_repo
 from app.repositories import usuarios as usuarios_repo
 from app.services import auth as auth_service
@@ -350,6 +350,19 @@ def enviar_localizacao():
             lng=float(lng),
             precisao=float(precisao) if precisao is not None else None,
         )
+        # Salva no histórico de rastreamento
+        with transaction() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO rastreamento (usuario_id, lat, lng, precisao) VALUES (%s, %s, %s, %s)",
+                (user["usuario_id"], float(lat), float(lng), float(precisao) if precisao is not None else None),
+            )
+            # Mantém apenas as últimas 200 posições por usuário
+            cur.execute("""
+                DELETE FROM rastreamento WHERE id NOT IN (
+                    SELECT id FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 200
+                ) AND usuario_id = %s
+            """, (user["usuario_id"], user["usuario_id"]))
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

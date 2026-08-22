@@ -229,3 +229,14 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_subscriptions(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
+
+-- Rastreamento de entregadores (histórico de posições)
+CREATE TABLE IF NOT EXISTS rastreamento (
+    id BIGSERIAL PRIMARY KEY,
+    usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
+    lat DOUBLE PRECISION NOT NULL,
+    lng DOUBLE PRECISION NOT NULL,
+    precisao DOUBLE PRECISION,
+    criado_em TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rastreamento_usuario ON rastreamento(usuario_id, criado_em DESC);

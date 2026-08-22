@@ -230,6 +230,7 @@
             <span><i class="dot done"></i> Entregue</span>
             <span><i class="dot zone"></i> Zona</span>
           </div>
+          <button class="btn btn-danger" style="position:absolute;top:10px;right:10px;z-index:1000;font-size:11px;padding:6px 10px" onclick="limparDados()">🗑️ Limpar dados</button>
         </div>
         <div class="card" style="margin-top:16px">
           <div class="card-title">Entregadores — Status GPS</div>
@@ -651,6 +652,20 @@ function extractCoords(url) {
   return null;
 }
 
+async function limparDados() {
+  if (!confirm('Tem certeza? Isso vai remover TODAS as ordens, comissões, localizações e inscrições push. Esta ação não pode ser desfeita.')) return;
+  try {
+    const r = await api('/limpar-dados', { method: 'POST' });
+    const j = await r.json();
+    if (j.ok) {
+      alert('Dados limpos!\nOrdens: ' + j.removidos.ordens + '\nComissões: ' + j.removidos.comissoes + '\nLocalizações: ' + j.removidos.localizacoes + '\nPush subs: ' + j.removidos.push_subscriptions);
+      loadMonitor();
+    } else {
+      alert('Erro ao limpar dados');
+    }
+  } catch (err) { alert('Erro: ' + err.message); }
+}
+
 async function loadMonitor() {
   try {
     const r = await api('/monitoramento');
@@ -686,7 +701,12 @@ async function loadMonitor() {
     j.entregadores.forEach(e => {
       if (!e.localizacao) return;
       const icon = L.divIcon({ className: '', html: '<div class="driver-marker">' + (e.nome || 'E').charAt(0) + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
-      L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador');
+      L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador' + (e.corrida_ativa ? '<br>Status: ' + e.corrida_ativa : ''));
+      // Trilha do percurso (se tiver)
+      if (e.trilha && e.trilha.length > 1) {
+        const points = e.trilha.map(t => [t.lat, t.lng]);
+        L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(routesLayer);
+      }
     });
 
     // Tabela de status de entregadores

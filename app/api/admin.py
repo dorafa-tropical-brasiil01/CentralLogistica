@@ -175,6 +175,19 @@ def monitoramento():
                 "corrida_ativa": corrida_ativa,
             })
 
+        # Trilha de rastreamento para entregadores com corrida ativa
+        for ent in entregadores:
+            if ent.get("corrida_ativa") and ent.get("localizacao"):
+                cur.execute("""
+                    SELECT lat, lng, criado_em
+                    FROM rastreamento
+                    WHERE usuario_id = %s
+                    ORDER BY criado_em DESC LIMIT 50
+                """, (ent["id"],))
+                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
+                trilha.reverse()  # ordem cronológica
+                ent["trilha"] = trilha
+
     return jsonify({
         "ok": True,
         "indicadores": {
@@ -1357,3 +1370,43 @@ def admin_push_teste_entregador(entregador_id: int):
         return _err("sem_inscricoes_validas", 404)
 
     return jsonify({"ok": True, "enviadas": enviadas})
+
+
+# ------------------------------------------------------------------
+# Limpar dados de teste (ordens, comissões, localizações)
+# ------------------------------------------------------------------
+
+@bp.post("/limpar-dados")
+def admin_limpar_dados():
+    """Remove todas as ordens, comissões e localizações de teste."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        # Remove comissões
+        cur.execute("DELETE FROM comissoes RETURNING id")
+        comissoes = cur.rowcount
+        # Remove ordens
+        cur.execute("DELETE FROM ordens RETURNING id")
+        ordens = cur.rowcount
+        # Remove localizações de entregadores
+        cur.execute("UPDATE usuarios SET ultima_localizacao = NULL, ultima_localizacao_em = NULL, corrida_ativa = NULL WHERE perfil = 'ENTREGADOR'")
+        locs = cur.rowcount
+        # Remove inscrições push antigas
+        cur.execute("DELETE FROM push_subscriptions RETURNING id")
+        subs = cur.rowcount
+
+    import logging as _log
+    _log.getLogger("admin").info("Limpar dados: %d ordens, %d comissoes, %d locs, %d subs", ordens, comissoes, locs, subs)
+
+    return jsonify({
+        "ok": True,
+        "removidos": {
+            "ordens": ordens,
+            "comissoes": comissoes,
+            "localizacoes": locs,
+            "push_subscriptions": subs,
+        },
+    })
