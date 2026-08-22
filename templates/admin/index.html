@@ -340,7 +340,11 @@
       <!-- MÓDULO 5: ORDENS -->
       <div class="module" id="mod-ordens">
         <div class="card">
-          <div class="card-title">Histórico de ordens</div>
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Histórico de ordens</span>
+            <button class="btn btn-ghost btn-sm" id="ordToggleBtn" onclick="toggleOrdCard()" title="Ocultar/Mostrar lista">▲</button>
+          </div>
+          <div id="ordCardBody">
           <div class="filters">
             <div class="filter-group"><label>ID da Ordem</label><input id="ordId" type="text" placeholder="123" /></div>
             <div class="filter-group"><label>Código iFood</label><input id="ordIfood" type="text" placeholder="..." /></div>
@@ -353,6 +357,7 @@
               <thead><tr><th>Data</th><th>Protocolo</th><th>Status</th><th>Valor</th><th>Entregador</th><th>Pedido</th><th>Ações</th></tr></thead>
               <tbody id="ordTable"></tbody>
             </table>
+          </div>
           </div>
         </div>
       </div>
@@ -706,6 +711,19 @@ function extractCoords(url) {
   m = url.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
   m = url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
   return null;
+}
+
+// Toggle lista de ordens
+function toggleOrdCard() {
+  const body = document.getElementById('ordCardBody');
+  const btn = document.getElementById('ordToggleBtn');
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    btn.textContent = '▲';
+  } else {
+    body.style.display = 'none';
+    btn.textContent = '▼';
+  }
 }
 
 async function limparDados() {

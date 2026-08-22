@@ -138,13 +138,18 @@
     .ord-entregador-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
     .ord-entregador-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
 
-    /* Toggle sidebar (mobile) */
+    /* Toggle sidebar (sempre visível) */
     .sidebar-toggle {
-      position: absolute; top: 14px; left: 14px; z-index: 600;
+      position: absolute; top: 14px; left: 394px; z-index: 600;
       background: var(--surface); border: 1px solid var(--border); color: var(--text);
-      width: 40px; height: 40px; border-radius: 10px; cursor: pointer; font-size: 18px;
-      display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px);
+      width: 36px; height: 40px; border-radius: 0 10px 10px 0; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px);
+      transition: left .3s ease, background .2s; border-left: none;
     }
+    .sidebar-toggle:hover { background: var(--surface-2); }
+    .sidebar-toggle.collapsed { left: 14px; border-radius: 10px; border: 1px solid var(--border); }
+    .sidebar { transition: transform .3s ease; }
+    .sidebar.collapsed { transform: translateX(-100%); }
 
     /* Info flutuante no mapa */
     .map-info {
@@ -190,9 +195,9 @@
 
     /* Mobile */
     @media (max-width: 768px) {
-      .sidebar { width: 320px; transform: translateX(-100%); transition: transform .3s; }
-      .sidebar.open { transform: translateX(0); }
-      .sidebar-toggle { display: flex; }
+      .sidebar { width: 320px; }
+      .sidebar-toggle { left: 334px; }
+      .sidebar-toggle.collapsed { left: 14px; border-radius: 10px; }
       .map-info { bottom: 14px; right: 14px; padding: 8px 12px; font-size: 11px; gap: 10px; }
       .status-cards { grid-template-columns: 1fr 1fr; }
     }
@@ -220,8 +225,8 @@
     <!-- MAPA -->
     <div id="map"></div>
 
-    <!-- TOGGLE (mobile) -->
-    <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+    <!-- TOGGLE painel -->
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀</button>
 
     <!-- PAINEL LATERAL ESQUERDO -->
     <div class="sidebar">
@@ -467,6 +472,16 @@
     // Init com dados de exemplo
     ordens = ordensExemplo;
     render();
+
+    // Toggle sidebar
+    function toggleSidebar() {
+      const sb = document.querySelector('.sidebar');
+      const btn = document.getElementById('sidebarToggle');
+      sb.classList.toggle('collapsed');
+      btn.classList.toggle('collapsed');
+      btn.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
+      setTimeout(() => map.invalidateSize(), 350);
+    }
   </script>
 </body>
 </html>

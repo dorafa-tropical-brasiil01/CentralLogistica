@@ -264,8 +264,12 @@
       <span><span style="display:inline-block;width:12px;height:3px;background:#3a86ff;border-radius:2px;vertical-align:middle;opacity:.5"></span> Rota planejada</span>
     </div>
       </div>
-      <div class="card">
-        <div class="card-title">Entregas das últimas 24 horas</div>
+      <div class="card" id="ordCard">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Entregas das últimas 24 horas</span>
+          <button class="btn btn-ghost btn-sm" id="ordToggleBtn" onclick="toggleOrdCard()" title="Ocultar/Mostrar lista">▲</button>
+        </div>
+        <div id="ordCardBody">
         <div class="filters">
           <div class="filter-group">
             <label>Período</label>
@@ -292,6 +296,7 @@
             <thead><tr><th>Data</th><th>Protocolo</th><th>Status</th><th>Valor</th><th>Entregador</th><th></th></tr></thead>
             <tbody id="ordTable"></tbody>
           </table>
+        </div>
         </div>
       </div>
     </div>
@@ -890,6 +895,19 @@ async function checkRecargaStatus() {
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+// Toggle lista de ordens
+function toggleOrdCard() {
+  const body = document.getElementById('ordCardBody');
+  const btn = document.getElementById('ordToggleBtn');
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    btn.textContent = '▲';
+  } else {
+    body.style.display = 'none';
+    btn.textContent = '▼';
+  }
+}
 
 // INIT
 if (token) {

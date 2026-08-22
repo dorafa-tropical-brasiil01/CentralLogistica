@@ -244,5 +244,11 @@ CREATE TABLE IF NOT EXISTS rastreamento (
     snapped_lng DOUBLE PRECISION,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
+-- Colunas adicionais (para tabelas já existentes — CREATE TABLE IF NOT EXISTS não adiciona colunas)
+ALTER TABLE rastreamento ADD COLUMN IF NOT EXISTS ordem_id BIGINT REFERENCES ordens_servico(id);
+ALTER TABLE rastreamento ADD COLUMN IF NOT EXISTS velocidade DOUBLE PRECISION;
+ALTER TABLE rastreamento ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION;
+ALTER TABLE rastreamento ADD COLUMN IF NOT EXISTS snapped_lat DOUBLE PRECISION;
+ALTER TABLE rastreamento ADD COLUMN IF NOT EXISTS snapped_lng DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS idx_rastreamento_usuario ON rastreamento(usuario_id, criado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_rastreamento_ordem ON rastreamento(ordem_id, criado_em DESC);
