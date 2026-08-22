@@ -116,6 +116,32 @@ def enviar_notificacao(
     })
 
     enviadas = 0
+    # Prepara a chave privada VAPID
+    vapid_key_raw = config.VAPID_PRIVATE_KEY
+    vapid_key = None
+    try:
+        if "|" in vapid_key_raw:
+            # Formato com | como separador — reconstrói PEM corretamente
+            parts = [p.strip() for p in vapid_key_raw.split("|") if p.strip()]
+            vapid_key = "\n".join(parts) + "\n"
+        elif "-----BEGIN" in vapid_key_raw:
+            vapid_key = vapid_key_raw
+        else:
+            vapid_key = vapid_key_raw
+        logger.info("VAPID key processada (len=%s, primeiros 40): %s", len(vapid_key), vapid_key[:40])
+
+        # Tenta parsear a chave para validar
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        try:
+            parsed = load_pem_private_key(vapid_key.encode() if isinstance(vapid_key, str) else vapid_key, password=None)
+            logger.info("VAPID key parseada com sucesso: %s", type(parsed).__name__)
+            # Usa a chave parseada (objeto) em vez da string
+            vapid_key = parsed
+        except Exception as parse_err:
+            logger.warning("VAPID key: falha ao parsear PEM, tentando como string: %s", parse_err)
+    except Exception as e:
+        logger.error("Erro ao preparar VAPID key: %s", e)
+
     for sub in subs:
         subscription_info = {
             "endpoint": sub["endpoint"],
@@ -126,7 +152,7 @@ def enviar_notificacao(
             webpush(
                 subscription_info=subscription_info,
                 data=payload,
-                vapid_private_key=config.VAPID_PRIVATE_KEY.replace("|", "\n"),
+                vapid_private_key=vapid_key,
                 vapid_claims=_vapid_claims(),
             )
             enviadas += 1
