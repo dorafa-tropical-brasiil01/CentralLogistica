@@ -620,15 +620,40 @@ def acompanhar():
                 except Exception:
                     loc = None
 
-            # Trilha
+            # Trilha com snap-to-roads
             trilha = []
+            trilha_snapped = False
             if r.get("entregador_id"):
                 cur.execute("""
                     SELECT lat, lng FROM rastreamento
                     WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 50
                 """, (r["entregador_id"],))
-                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
-                trilha.reverse()
+                rows = cur.fetchall()
+                trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
+                trilha_raw.reverse()
+
+                # Snap-to-roads
+                if len(trilha_raw) >= 2:
+                    from app.services.mapmatching import snap_to_road
+                    snapped = snap_to_road(trilha_raw)
+                    if snapped:
+                        trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
+                        trilha_snapped = True
+                    else:
+                        trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                else:
+                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+
+            # Rota planejada via OSRM
+            rota_planejada = None
+            if origin_coords and dest_coords:
+                from app.services.mapmatching import calcular_rota
+                rota = calcular_rota(
+                    (origin_coords[0], origin_coords[1]),
+                    (dest_coords[0], dest_coords[1]),
+                )
+                if rota:
+                    rota_planejada = [{"lat": p[0], "lng": p[1]} for p in rota]
 
             items.append({
                 "id": r["id"],
@@ -642,6 +667,8 @@ def acompanhar():
                 "destino": {"lat": dest_coords[0], "lng": dest_coords[1]} if dest_coords else None,
                 "origem": {"lat": origin_coords[0], "lng": origin_coords[1]} if origin_coords else None,
                 "trilha": trilha,
+                "trilha_snapped": trilha_snapped,
+                "rota_planejada": rota_planejada,
             })
 
     return jsonify({"ok": True, "ordens": items})

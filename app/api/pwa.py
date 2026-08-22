@@ -339,6 +339,14 @@ def enviar_localizacao():
     lat = data.get("lat")
     lng = data.get("lng")
     precisao = data.get("precisao")
+    velocidade = data.get("velocidade")
+    heading = data.get("heading")
+    ordem_id = data.get("ordem_id")
+
+    # Filtro de precisão — ignora pontos muito imprecisos
+    if precisao is not None and float(precisao) > 100:
+        logging.info("localizacao: user=%s ignorado (precisao=%.0f > 100m)", user["usuario_id"], float(precisao))
+        return jsonify({"ok": True, "ignored": "low_precision"})
 
     if lat is None or lng is None:
         return jsonify({"error": "lat_e_lng_obrigatorios"}), 400
@@ -354,16 +362,26 @@ def enviar_localizacao():
         with transaction() as conn:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO rastreamento (usuario_id, lat, lng, precisao) VALUES (%s, %s, %s, %s)",
-                (user["usuario_id"], float(lat), float(lng), float(precisao) if precisao is not None else None),
+                """INSERT INTO rastreamento
+                   (usuario_id, ordem_id, lat, lng, precisao, velocidade, heading)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    user["usuario_id"],
+                    int(ordem_id) if ordem_id else None,
+                    float(lat), float(lng),
+                    float(precisao) if precisao is not None else None,
+                    float(velocidade) if velocidade is not None else None,
+                    float(heading) if heading is not None else None,
+                ),
             )
-            # Mantém apenas as últimas 200 posições por usuário
+            # Mantém apenas as últimas 500 posições por usuário
             cur.execute("""
                 DELETE FROM rastreamento WHERE id NOT IN (
-                    SELECT id FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 200
+                    SELECT id FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 500
                 ) AND usuario_id = %s
             """, (user["usuario_id"], user["usuario_id"]))
-        logging.info("localizacao: user=%s lat=%s lng=%s salvo no rastreamento", user["usuario_id"], lat, lng)
+        logging.info("localizacao: user=%s lat=%s lng=%s prec=%.0f ordem=%s salvo",
+                     user["usuario_id"], lat, lng, float(precisao or 0), ordem_id)
     except Exception as e:
         logging.error("localizacao: ERRO ao salvar: %s", e)
         return jsonify({"error": str(e)}), 400

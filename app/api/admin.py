@@ -181,6 +181,20 @@ def monitoramento():
                     payload = json.loads(payload)
                 except Exception:
                     payload = {}
+            origem_coords = _resolve_coords(payload.get("origin_maps_url", ""))
+            dest_coords = _resolve_coords(payload.get("client_maps_url", ""))
+
+            # Rota planejada via OSRM (só para ordens ativas com entregador)
+            rota_planejada = None
+            if origem_coords and dest_coords and r["status"] in ("ATRIBUIDO", "EM_ROTA"):
+                from app.services.mapmatching import calcular_rota
+                rota = calcular_rota(
+                    (origem_coords["lat"], origem_coords["lng"]),
+                    (dest_coords["lat"], dest_coords["lng"]),
+                )
+                if rota:
+                    rota_planejada = [{"lat": p[0], "lng": p[1]} for p in rota]
+
             ordens.append({
                 "id": r["id"],
                 "protocolo": r.get("protocolo"),
@@ -189,8 +203,9 @@ def monitoramento():
                 "taxa": float(r["taxa"] or 0),
                 "entregador_id": r.get("entregador_id"),
                 "payload": payload,
-                "coords": _resolve_coords(payload.get("client_maps_url", "")),
-                "origem_coords": _resolve_coords(payload.get("origin_maps_url", "")),
+                "coords": dest_coords,
+                "origem_coords": origem_coords,
+                "rota_planejada": rota_planejada,
                 "criado_em": r.get("criado_em").isoformat() if r.get("criado_em") else None,
             })
 
@@ -244,6 +259,7 @@ def monitoramento():
             })
 
         # Trilha de rastreamento para entregadores com localização
+        from app.services.mapmatching import snap_to_road
         for ent in entregadores:
             if ent.get("localizacao"):
                 cur.execute("""
@@ -252,10 +268,23 @@ def monitoramento():
                     WHERE usuario_id = %s
                     ORDER BY criado_em DESC LIMIT 50
                 """, (ent["id"],))
-                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
-                trilha.reverse()  # ordem cronológica
-                ent["trilha"] = trilha
-                logging.info("monitoramento: trilha para user=%s tem %d pontos", ent["id"], len(trilha))
+                rows = cur.fetchall()
+                trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
+                trilha_raw.reverse()  # ordem cronológica
+
+                # Snap-to-roads: ajusta pontos GPS à malha viária
+                trilha_snapped = None
+                if len(trilha_raw) >= 2:
+                    trilha_snapped = snap_to_road(trilha_raw)
+
+                if trilha_snapped:
+                    ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_snapped]
+                    ent["trilha_snapped"] = True
+                else:
+                    ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                    ent["trilha_snapped"] = False
+                logging.info("monitoramento: trilha user=%s (%d pts, snapped=%s)",
+                             ent["id"], len(ent["trilha"]), ent["trilha_snapped"])
 
     return jsonify({
         "ok": True,

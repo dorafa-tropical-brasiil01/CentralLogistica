@@ -237,7 +237,8 @@
             <span><i class="dot route"></i> Em rota</span>
             <span><i class="dot done"></i> Entregue</span>
             <span><i class="dot zone"></i> Zona</span>
-            <span><i style="width:12px;height:4px;background:#00d4aa;border-radius:2px"></i> Percurso</span>
+            <span><i style="width:12px;height:4px;background:#00d4aa;border-radius:2px"></i> Trajeto</span>
+            <span><i style="width:12px;height:3px;background:#3a86ff;border-radius:2px;opacity:.5"></i> Rota</span>
           </div>
           <button class="btn btn-danger" style="position:absolute;top:10px;right:10px;z-index:1000;font-size:11px;padding:6px 10px" onclick="limparDados()">🗑️ Limpar</button>
         </div>
@@ -760,8 +761,14 @@ async function loadMonitor() {
         L.marker([o.origem_coords.lat, o.origem_coords.lng], { icon: origIcon }).addTo(markersLayer).bindPopup('<b>Origem</b><br>' + o.protocolo);
       }
 
-      // Rota: se entregador tem localização
-      if (o.entregador_id) {
+      // Rota planejada (azul tracejado, seguindo ruas)
+      if (o.rota_planejada && o.rota_planejada.length > 1) {
+        const routePoints = o.rota_planejada.map(p => [p.lat, p.lng]);
+        L.polyline(routePoints, { color: '#3a86ff', weight: 3, opacity: .5, dashArray: '8,8' }).addTo(routesLayer);
+      }
+
+      // Rota: linha reta entre entregador e destino (fallback se não tem rota planejada)
+      if (o.entregador_id && !o.rota_planejada) {
         const ent = j.entregadores.find(e => e.id === o.entregador_id);
         if (ent && ent.localizacao) {
           L.polyline([[ent.localizacao.lat, ent.localizacao.lng], coords], { color: '#3a86ff', weight: 3, opacity: .7, dashArray: '8,8' }).addTo(routesLayer);

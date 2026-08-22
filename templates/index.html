@@ -404,6 +404,7 @@
         const r = await api('/ordens/' + ordemId + '/reivindicar', { method: 'POST' });
         if (r.ok) {
           showToast('Entrega pegada com sucesso!');
+          ordemAtivaId = ordemId;  // vincula GPS à ordem
           renderDisponiveis();
           renderEntregadorView();
           // Troca para aba "Minhas corridas"
@@ -762,6 +763,11 @@
         });
         if (r.ok) {
           showToast('Status atualizado: ' + status);
+          if (status === 'ENTREGUE' || status === 'CANCELADO') {
+            ordemAtivaId = null;  // desvincula GPS da ordem
+          } else if (status === 'EM_ROTA') {
+            ordemAtivaId = ordemId;  // garante vínculo
+          }
           renderEntregadorView();
         } else if (r.status === 403) {
           const j = await r.json().catch(() => ({}));
@@ -778,6 +784,18 @@
     }
 
     // --- GPS do entregador ---
+    let ultimaEnvioGPS = 0;
+    let ultimaPosGPS = null;
+    let ordemAtivaId = null;  // setado quando reivindica/inicia rota
+
+    function haversineMetros(p1, p2) {
+      const R = 6371000;
+      const dLat = (p2[0] - p1[0]) * Math.PI / 180;
+      const dLng = (p2[1] - p1[1]) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(p1[0]*Math.PI/180) * Math.cos(p2[0]*Math.PI/180) * Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
     function iniciarGPS() {
       if (!navigator.geolocation) { showToast('GPS não disponível neste dispositivo'); return; }
       if (gpsWatchId !== null) { showToast('GPS já está ativo'); return; }
@@ -786,12 +804,34 @@
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const precisao = pos.coords.accuracy;
+        const agora = Date.now();
+
+        // Filtro 1: precisão mínima — ignora pontos com mais de 100m de imprecisão
+        if (precisao && precisao > 100) return;
+
+        // Filtro 2: throttle — máx 1 envio a cada 3 segundos
+        if (agora - ultimaEnvioGPS < 3000) return;
+
+        // Filtro 3: só envia se movimentou mais de 10 metros
+        if (ultimaPosGPS) {
+          const dist = haversineMetros(ultimaPosGPS, [lat, lng]);
+          if (dist < 10) return;
+        }
+
+        ultimaEnvioGPS = agora;
+        ultimaPosGPS = [lat, lng];
+
         const gpsEl = document.getElementById('gpsStatus');
         if (gpsEl) { gpsEl.textContent = '📍 GPS: ON'; gpsEl.style.color = '#28a745'; }
         try {
           await api('/localizacao', {
             method: 'POST',
-            body: JSON.stringify({ lat, lng, precisao }),
+            body: JSON.stringify({
+              lat, lng, precisao,
+              velocidade: pos.coords.speed,
+              heading: pos.coords.heading,
+              ordem_id: ordemAtivaId,
+            }),
           });
         } catch (err) { /* silencioso */ }
       }, err => {
@@ -799,7 +839,7 @@
         gpsWatchId = null;
         const gpsEl = document.getElementById('gpsStatus');
         if (gpsEl) { gpsEl.textContent = '📍 GPS: OFF'; gpsEl.style.color = '#dc3545'; }
-      }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+      }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 });
     }
 
     function pararGPS() {

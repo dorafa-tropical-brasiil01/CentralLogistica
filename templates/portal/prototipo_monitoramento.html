@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>REMO — Protótipo Monitoramento Portal do Cliente</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --brand: #0a2540; --brand-2: #123a5e;
+      --accent: #00d4aa; --accent-2: #00b894;
+      --warn: #f4a261; --danger: #e76f51; --info: #3a86ff; --purple: #7209b7;
+      --bg: #0f172a; --surface: rgba(15,23,42,.85); --surface-2: rgba(30,41,59,.9);
+      --text: #f1f5f9; --text-2: #94a3b8; --text-3: #64748b;
+      --border: rgba(148,163,184,.15);
+      --radius: 14px; --radius-sm: 10px;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+    /* Header */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 10000;
+      background: var(--brand); display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; box-shadow: 0 2px 12px rgba(0,0,0,.3);
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-logo { font-size: 20px; font-weight: 900; color: var(--accent); letter-spacing: -0.5px; }
+    .header-sub { font-size: 12px; color: var(--text-2); }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .user-chip { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--brand); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; }
+    .btn-sair { background: transparent; border: 1px solid rgba(255,255,255,.2); color: var(--text); padding: 6px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+    .btn-sair:hover { background: rgba(255,255,255,.1); }
+
+    /* Layout principal */
+    .main { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; display: flex; }
+
+    /* Mapa — tela cheia */
+    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; z-index: 1; }
+
+    /* Painel lateral esquerdo — overlay sobre o mapa */
+    .sidebar {
+      position: absolute; top: 0; left: 0; bottom: 0; width: 380px; z-index: 500;
+      background: var(--surface); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 4px 0 30px rgba(0,0,0,.3);
+    }
+
+    /* Header do painel */
+    .sidebar-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+    .sidebar-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .sidebar-title { font-size: 20px; font-weight: 800; color: var(--text); }
+    .btn-nova {
+      background: var(--warn); color: #fff; border: none; padding: 8px 16px;
+      border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; gap: 6px; transition: all .2s;
+      box-shadow: 0 2px 8px rgba(244,162,97,.3);
+    }
+    .btn-nova:hover { background: #e8945a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(244,162,97,.4); }
+    .sidebar-count { font-size: 13px; color: var(--text-2); font-weight: 500; }
+
+    /* Filtro de período */
+    .filter-period { padding: 12px 20px; border-bottom: 1px solid var(--border); }
+    .filter-period select {
+      width: 100%; padding: 8px 12px; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit;
+      cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+    }
+    .filter-period select:focus { outline: none; border-color: var(--accent); }
+
+    /* Contadores de status */
+    .status-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+    .status-card {
+      padding: 12px; border-radius: var(--radius-sm); text-align: center; position: relative; overflow: hidden;
+      border: 1px solid var(--border); transition: transform .2s;
+    }
+    .status-card:hover { transform: translateY(-2px); }
+    .status-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+    .status-card.agendadas::before { background: #64748b; }
+    .status-card.procurando::before { background: var(--warn); }
+    .status-card.progresso::before { background: var(--purple); }
+    .status-card.encerradas::before { background: var(--accent); }
+    .status-card .num { font-size: 24px; font-weight: 900; line-height: 1.2; }
+    .status-card.agendadas .num { color: #94a3b8; }
+    .status-card.procurando .num { color: var(--warn); }
+    .status-card.progresso .num { color: #b068e0; }
+    .status-card.encerradas .num { color: var(--accent); }
+    .status-card .label { font-size: 11px; color: var(--text-2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+    /* Barra de pesquisa */
+    .search-bar { padding: 14px 20px; border-bottom: 1px solid var(--border); position: relative; }
+    .search-bar input {
+      width: 100%; padding: 10px 12px 10px 38px; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit;
+    }
+    .search-bar input:focus { outline: none; border-color: var(--accent); }
+    .search-bar input::placeholder { color: var(--text-3); }
+    .search-icon { position: absolute; left: 32px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 16px; }
+
+    /* Área de resultados — lista de ordens */
+    .results { flex: 1; overflow-y: auto; padding: 8px 12px; }
+    .results::-webkit-scrollbar { width: 6px; }
+    .results::-webkit-scrollbar-track { background: transparent; }
+    .results::-webkit-scrollbar-thumb { background: rgba(148,163,184,.2); border-radius: 3px; }
+    .results::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,.4); }
+
+    /* Estado vazio */
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 40px 20px; }
+    .empty-icon { font-size: 64px; opacity: 0.15; margin-bottom: 16px; }
+    .empty-text { font-size: 14px; color: var(--text-2); line-height: 1.6; max-width: 240px; }
+    .empty-text strong { color: var(--text); }
+
+    /* Card de ordem */
+    .ord-card {
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 14px; margin-bottom: 8px; cursor: pointer; transition: all .2s; position: relative;
+    }
+    .ord-card:hover { border-color: var(--accent); transform: translateX(4px); }
+    .ord-card.active { border-color: var(--accent); background: rgba(0,212,170,.08); }
+    .ord-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .ord-protocolo { font-size: 13px; font-weight: 700; color: var(--text); }
+    .ord-status { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ord-status.PENDENTE { background: rgba(244,162,97,.15); color: var(--warn); }
+    .ord-status.ATRIBUIDO { background: rgba(114,9,183,.15); color: #b068e0; }
+    .ord-status.EM_ROTA { background: rgba(58,134,255,.15); color: var(--info); }
+    .ord-status.ENTREGUE { background: rgba(0,212,170,.15); color: var(--accent); }
+    .ord-status.CANCELADO { background: rgba(231,111,81,.15); color: var(--danger); }
+    .ord-cliente { font-size: 13px; color: var(--text-2); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .ord-footer { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-3); }
+    .ord-taxa { font-weight: 700; color: var(--accent); font-size: 14px; }
+    .ord-entregador { display: flex; align-items: center; gap: 6px; }
+    .ord-entregador-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+    .ord-entregador-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+    /* Toggle sidebar (mobile) */
+    .sidebar-toggle {
+      position: absolute; top: 14px; left: 14px; z-index: 600;
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      width: 40px; height: 40px; border-radius: 10px; cursor: pointer; font-size: 18px;
+      display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px);
+    }
+
+    /* Info flutuante no mapa */
+    .map-info {
+      position: absolute; bottom: 20px; right: 20px; z-index: 500;
+      background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 16px; font-size: 12px; color: var(--text-2);
+      display: flex; align-items: center; gap: 16px;
+    }
+    .map-info-item { display: flex; align-items: center; gap: 6px; }
+    .map-info-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .map-info-dot.origem { background: var(--accent); }
+    .map-info-dot.destino { background: var(--danger); }
+    .map-info-dot.entregador { background: var(--info); }
+    .map-info-dot.trilha { width: 16px; height: 3px; border-radius: 2px; background: var(--accent); }
+
+    /* Modal Nova Entrega */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.7);
+      z-index: 9999; display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); backdrop-filter: blur(16px); border: 1px solid var(--border);
+      border-radius: var(--radius); width: 90%; max-width: 500px; max-height: 90vh; overflow: auto;
+      padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 16px; }
+    .modal-close { float: right; background: none; border: none; color: var(--text-2); font-size: 22px; cursor: pointer; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 5px; }
+    .form-group input, .form-group textarea {
+      width: 100%; padding: 11px; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+    .form-row { display: flex; gap: 12px; }
+    .btn-criar {
+      width: 100%; padding: 14px; background: var(--accent); color: var(--brand);
+      border: none; border-radius: 8px; font-size: 16px; font-weight: 800; cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-criar:hover { background: var(--accent-2); transform: translateY(-1px); }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .sidebar { width: 320px; transform: translateX(-100%); transition: transform .3s; }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-toggle { display: flex; }
+      .map-info { bottom: 14px; right: 14px; padding: 8px 12px; font-size: 11px; gap: 10px; }
+      .status-cards { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <div class="header-logo">REMO</div>
+      <div class="header-sub">Portal do Cliente — Monitoramento</div>
+    </div>
+    <div class="header-right">
+      <div class="user-chip">
+        <div class="user-avatar">E</div>
+        <span>Empresa Teste</span>
+      </div>
+      <button class="btn-sair">Sair</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- MAPA -->
+    <div id="map"></div>
+
+    <!-- TOGGLE (mobile) -->
+    <button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+
+    <!-- PAINEL LATERAL ESQUERDO -->
+    <div class="sidebar">
+      <!-- Header -->
+      <div class="sidebar-header">
+        <div class="sidebar-title-row">
+          <div class="sidebar-title">Ordens de Serviço</div>
+          <button class="btn-nova" onclick="openModal()">+ Nova</button>
+        </div>
+        <div class="sidebar-count" id="ordCount">0 ordens • R$ 0,00</div>
+      </div>
+
+      <!-- Filtro de período -->
+      <div class="filter-period">
+        <select id="periodo">
+          <option value="6">Últimas 6h</option>
+          <option value="24" selected>Últimas 24h</option>
+          <option value="48">Últimas 48h</option>
+          <option value="168">Últimos 7 dias</option>
+        </select>
+      </div>
+
+      <!-- Contadores de status -->
+      <div class="status-cards">
+        <div class="status-card agendadas">
+          <div class="num" id="cntAgendadas">0</div>
+          <div class="label">Agendadas</div>
+        </div>
+        <div class="status-card procurando">
+          <div class="num" id="cntProcurando">0</div>
+          <div class="label">Procurando</div>
+        </div>
+        <div class="status-card progresso">
+          <div class="num" id="cntProgresso">0</div>
+          <div class="label">Progresso</div>
+        </div>
+        <div class="status-card encerradas">
+          <div class="num" id="cntEncerradas">0</div>
+          <div class="label">Encerradas</div>
+        </div>
+      </div>
+
+      <!-- Busca -->
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Buscar por nome, telefone..." id="searchInput" oninput="filtrarOrdens()" />
+      </div>
+
+      <!-- Resultados -->
+      <div class="results" id="results">
+        <!-- Estado vazio -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-text">
+            <strong>Nenhuma ordem de serviço encontrada.</strong><br><br>
+            Clique em <strong>"Nova"</strong> para criar sua primeira ordem.
+          </div>
+        </div>
+        <!-- Lista de ordens (preenchida via JS) -->
+      </div>
+    </div>
+
+    <!-- Info flutuante no mapa -->
+    <div class="map-info">
+      <div class="map-info-item"><div class="map-info-dot origem"></div> Origem</div>
+      <div class="map-info-dot destino"></div> Destino</div>
+      <div class="map-info-item"><div class="map-info-dot entregador"></div> Entregador</div>
+      <div class="map-info-item"><div class="map-info-dot trilha"></div> Percurso</div>
+    </div>
+  </div>
+
+  <!-- MODAL NOVA ENTREGA -->
+  <div class="modal-overlay" id="novaModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div class="modal-title">Nova Entrega</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Nome do cliente *</label>
+          <input type="text" placeholder="Ex: João da Silva" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>WhatsApp</label>
+          <input type="text" placeholder="62 9 9999-9999" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Endereço de destino (Google Maps) *</label>
+        <input type="text" placeholder="Cole o link do Google Maps" />
+      </div>
+      <div class="form-group">
+        <label>Endereço de origem</label>
+        <input type="text" placeholder="Link do Maps (opcional)" />
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea rows="2" placeholder="Ex: Entregar na portaria..."></textarea>
+      </div>
+      <button class="btn-criar" onclick="closeModal(); toast('Protótipo — entrega não criada')">Criar entrega</button>
+    </div>
+  </div>
+
+  <script>
+    // --- MAPA ---
+    const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 14);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+    const markersLayer = L.layerGroup().addTo(map);
+    const routesLayer = L.layerGroup().addTo(map);
+
+    // --- DADOS DE EXEMPLO ---
+    const ordensExemplo = [
+      {
+        id: 1, protocolo: 'OS-ABC123', status: 'EM_ROTA', taxa: 9.0,
+        cliente: 'Margaret', whatsapp: '62 9 9236-6976',
+        entregador: 'Rafael Caixeta', entregador_online: true,
+        origem: [-16.746, -48.515], destino: [-16.744, -48.519],
+        trilha: [
+          [-16.746, -48.515], [-16.7455, -48.516], [-16.745, -48.517],
+          [-16.7448, -48.5175], [-16.7445, -48.518], [-16.744, -48.519]
+        ],
+        entregador_pos: [-16.7445, -48.518],
+      },
+      {
+        id: 2, protocolo: 'OS-DEF456', status: 'ATRIBUIDO', taxa: 7.0,
+        cliente: 'João Silva', whatsapp: '62 9 8888-7777',
+        entregador: 'Carlos', entregador_online: true,
+        origem: [-16.746, -48.515], destino: [-16.738, -48.510],
+        trilha: [],
+        entregador_pos: [-16.742, -48.512],
+      },
+      {
+        id: 3, protocolo: 'OS-GHI789', status: 'ENTREGUE', taxa: 12.0,
+        cliente: 'Maria Santos', whatsapp: '62 9 9999-0000',
+        entregador: 'Rafael Caixeta', entregador_online: false,
+        origem: [-16.746, -48.515], destino: [-16.750, -48.520],
+        trilha: [],
+        entregador_pos: null,
+      },
+    ];
+
+    let ordens = [];
+    let ordemSelecionada = null;
+
+    // --- RENDER ---
+    function render() {
+      const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+      const filtradas = ordens.filter(o => {
+        if (!search) return true;
+        return (o.cliente || '').toLowerCase().includes(search) ||
+               (o.whatsapp || '').toLowerCase().includes(search) ||
+               (o.protocolo || '').toLowerCase().includes(search);
+      });
+
+      // Contadores
+      document.getElementById('cntAgendadas').textContent = ordens.filter(o => o.status === 'AGENDADA').length;
+      document.getElementById('cntProcurando').textContent = ordens.filter(o => o.status === 'PENDENTE').length;
+      document.getElementById('cntProgresso').textContent = ordens.filter(o => ['ATRIBUIDO','EM_ROTA'].includes(o.status)).length;
+      document.getElementById('cntEncerradas').textContent = ordens.filter(o => ['ENTREGUE','CANCELADO'].includes(o.status)).length;
+      const total = ordens.reduce((s, o) => s + o.taxa, 0);
+      document.getElementById('ordCount').textContent = ordens.length + ' ordens • R$ ' + total.toFixed(2).replace('.', ',');
+
+      // Lista
+      const results = document.getElementById('results');
+      if (!filtradas.length) {
+        results.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-text">
+              <strong>Nenhuma ordem de serviço encontrada.</strong><br><br>
+              Clique em <strong>"Nova"</strong> para criar sua primeira ordem.
+            </div>
+          </div>`;
+      } else {
+        results.innerHTML = filtradas.map(o => `
+          <div class="ord-card ${ordemSelecionada === o.id ? 'active' : ''}" onclick="selecionarOrdem(${o.id})">
+            <div class="ord-card-header">
+              <div class="ord-protocolo">${o.protocolo}</div>
+              <div class="ord-status ${o.status}">${o.status}</div>
+            </div>
+            <div class="ord-cliente">👤 ${o.cliente}</div>
+            <div class="ord-footer">
+              <div class="ord-entregador">
+                <div class="ord-entregador-dot ${o.entregador_online ? 'online' : ''}"></div>
+                ${o.entregador || 'Sem entregador'}
+              </div>
+              <div class="ord-taxa">R$ ${o.taxa.toFixed(2).replace('.', ',')}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Mapa
+      markersLayer.clearLayers(); routesLayer.clearLayers();
+      const allPoints = [];
+      filtradas.forEach(o => {
+        if (o.origem) {
+          const icon = L.divIcon({ className: '', html: '<div style="background:#00d4aa;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">🏠</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+          L.marker(o.origem, { icon }).addTo(markersLayer).bindPopup('<b>Origem</b><br>' + o.protocolo);
+          allPoints.push(o.origem);
+        }
+        if (o.destino) {
+          const icon = L.divIcon({ className: '', html: '<div style="background:#e76f51;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">📍</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+          L.marker(o.destino, { icon }).addTo(markersLayer).bindPopup('<b>Destino</b><br>' + o.cliente + '<br>' + o.protocolo);
+          allPoints.push(o.destino);
+        }
+        if (o.trilha && o.trilha.length > 1) {
+          L.polyline(o.trilha, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(routesLayer);
+        }
+        if (o.entregador_pos) {
+          const icon = L.divIcon({ className: '', html: '<div style="background:#3a86ff;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)">' + (o.entregador || 'E').charAt(0) + '</div>', iconSize: [32, 32], iconAnchor: [16, 16] });
+          L.marker(o.entregador_pos, { icon }).addTo(markersLayer).bindPopup('<b>' + o.entregador + '</b><br>' + o.status);
+          allPoints.push(o.entregador_pos);
+        }
+      });
+      if (allPoints.length > 1) map.fitBounds(allPoints, { padding: [60, 60] });
+      else if (allPoints.length === 1) map.setView(allPoints[0], 15);
+    }
+
+    function selecionarOrdem(id) {
+      ordemSelecionada = ordemSelecionada === id ? null : id;
+      const o = ordens.find(x => x.id === id);
+      if (o && ordemSelecionada) {
+        const points = [o.origem, o.destino, o.entregador_pos].filter(Boolean);
+        if (points.length > 1) map.fitBounds(points, { padding: [80, 80] });
+        else if (points.length === 1) map.setView(points[0], 16);
+      }
+      render();
+    }
+
+    function filtrarOrdens() { render(); }
+
+    function openModal() { document.getElementById('novaModal').classList.add('open'); }
+    function closeModal() { document.getElementById('novaModal').classList.remove('open'); }
+
+    function toast(msg) {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text);padding:12px 24px;border-radius:8px;font-size:14px;z-index:99999;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.3)';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    }
+
+    // Init com dados de exemplo
+    ordens = ordensExemplo;
+    render();
+  </script>
+</body>
+</html>

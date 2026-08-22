@@ -234,9 +234,15 @@ CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
 CREATE TABLE IF NOT EXISTS rastreamento (
     id BIGSERIAL PRIMARY KEY,
     usuario_id BIGINT NOT NULL REFERENCES usuarios(id),
+    ordem_id BIGINT REFERENCES ordens_servico(id),
     lat DOUBLE PRECISION NOT NULL,
     lng DOUBLE PRECISION NOT NULL,
     precisao DOUBLE PRECISION,
+    velocidade DOUBLE PRECISION,
+    heading DOUBLE PRECISION,
+    snapped_lat DOUBLE PRECISION,
+    snapped_lng DOUBLE PRECISION,
     criado_em TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rastreamento_usuario ON rastreamento(usuario_id, criado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_rastreamento_ordem ON rastreamento(ordem_id, criado_em DESC);
