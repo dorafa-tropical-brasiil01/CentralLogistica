@@ -1386,20 +1386,23 @@ def admin_limpar_dados():
     with transaction() as conn:
         cur = conn.cursor()
         # Remove comissões
-        cur.execute("DELETE FROM comissoes RETURNING id")
+        cur.execute("DELETE FROM comissoes_entregador RETURNING id")
         comissoes = cur.rowcount
         # Remove ordens
-        cur.execute("DELETE FROM ordens RETURNING id")
+        cur.execute("DELETE FROM ordens_servico RETURNING id")
         ordens = cur.rowcount
         # Remove localizações de entregadores
-        cur.execute("UPDATE usuarios SET ultima_localizacao = NULL, ultima_localizacao_em = NULL, corrida_ativa = NULL WHERE perfil = 'ENTREGADOR'")
+        cur.execute("UPDATE usuarios SET localizacao_atual = NULL, ultima_localizacao_em = NULL WHERE perfil = 'ENTREGADOR'")
         locs = cur.rowcount
+        # Remove trilha de rastreamento
+        cur.execute("DELETE FROM rastreamento RETURNING id")
+        trilha = cur.rowcount
         # Remove inscrições push antigas
         cur.execute("DELETE FROM push_subscriptions RETURNING id")
         subs = cur.rowcount
 
     import logging as _log
-    _log.getLogger("admin").info("Limpar dados: %d ordens, %d comissoes, %d locs, %d subs", ordens, comissoes, locs, subs)
+    _log.getLogger("admin").info("Limpar dados: %d ordens, %d comissoes, %d locs, %d trilha, %d subs", ordens, comissoes, locs, trilha, subs)
 
     return jsonify({
         "ok": True,
@@ -1407,6 +1410,7 @@ def admin_limpar_dados():
             "ordens": ordens,
             "comissoes": comissoes,
             "localizacoes": locs,
+            "rastreamento": trilha,
             "push_subscriptions": subs,
         },
     })
