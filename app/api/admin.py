@@ -110,6 +110,36 @@ def monitoramento():
 
     with connect() as conn:
         cur = conn.cursor()
+
+        # Cidades disponíveis com coordenadas centrais (do polígono das áreas)
+        cur.execute("""
+            SELECT DISTINCT cidade, poligono
+            FROM areas_cobertura
+            WHERE cidade IS NOT NULL AND cidade != ''
+        """)
+        cidades_coords = {}
+        for r in (dict(x) for x in cur.fetchall()):
+            cidade = r.get("cidade")
+            poligono = r.get("poligono")
+            if isinstance(poligono, str):
+                try:
+                    poligono = json.loads(poligono)
+                except Exception:
+                    poligono = None
+            if poligono and isinstance(poligono, list) and len(poligono) > 0:
+                # Calcula centro do polígono
+                try:
+                    pts = poligono if isinstance(poligono[0], list) else poligono.get("coordinates", [[]])[0]
+                    if pts and isinstance(pts[0], (list, tuple)) and len(pts[0]) >= 2:
+                        lats = [p[0] for p in pts]
+                        lngs = [p[1] for p in pts]
+                        cidades_coords[cidade] = {
+                            "lat": sum(lats) / len(lats),
+                            "lng": sum(lngs) / len(lngs),
+                        }
+                except Exception:
+                    pass
+
         # Indicadores por status (últimas 6h)
         cur.execute("""
             SELECT status, COUNT(*) as total
@@ -148,11 +178,21 @@ def monitoramento():
 
         # Filtra ordens por cidade (busca no client_maps_url ou solicitacao_id)
         if cidade_filtro:
-            cidade_lower = cidade_filtro.lower()
-            ordens = [o for o in ordens if (
-                cidade_lower in (o.get("payload", {}).get("client_maps_url", "") or "").lower()
-                or cidade_lower in (o.get("solicitacao_id", "") or "").lower()
-            )]
+            # Normaliza: remove acentos e pega a última parte após vírgula
+            import unicodedata
+            def normalize(s):
+                return ''.join(c for c in unicodedata.normalize('NFD', s.lower()) if unicodedata.category(c) != 'Mn')
+            # "Michelle, Vianópolis" -> "vianopolis"
+            cidade_norm = normalize(cidade_filtro.split(",")[-1].strip())
+            ordens_filtradas = []
+            for o in ordens:
+                url = (o.get("payload", {}).get("client_maps_url", "") or "").lower()
+                sid = (o.get("solicitacao_id", "") or "").lower()
+                url_norm = normalize(url)
+                sid_norm = normalize(sid)
+                if cidade_norm in url_norm or cidade_norm in sid_norm:
+                    ordens_filtradas.append(o)
+            ordens = ordens_filtradas
 
         # Entregadores com localização
         cur.execute("""
@@ -200,6 +240,7 @@ def monitoramento():
 
     return jsonify({
         "ok": True,
+        "cidades_coords": cidades_coords,
         "indicadores": {
             "agendadas": indicadores.get("AGENDADA", 0),
             "procurando": indicadores.get("PENDENTE", 0),

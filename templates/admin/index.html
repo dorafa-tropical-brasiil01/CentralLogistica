@@ -645,18 +645,11 @@ function showModule(name, el) {
 }
 
 // MAPA
-const CIDADES_COORDS = {
-  'Goiania': [-16.6869, -49.2648],
-  'Vianopolis': [-16.7364, -49.2648],
-  'Anapolis': [-16.3280, -48.9530],
-  'Brasilia': [-15.7939, -47.8828],
-};
+let cidadesCoords = {};  // preenchido dinamicamente pelo loadMonitor
 
 function initMap() {
   if (map) { map.remove(); map = null; }
-  const cidade = document.getElementById('monCidade') ? document.getElementById('monCidade').value : '';
-  const coords = CIDADES_COORDS[cidade] || [-16.6869, -49.2648];
-  map = L.map('map', { zoomControl: true, attributionControl: false }).setView(coords, 14);
+  map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.6869, -49.2648], 13);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
   zonesLayer = L.layerGroup().addTo(map);
@@ -670,21 +663,20 @@ async function carregarCidades() {
     const cidades = [...new Set((j.areas || []).map(a => a.cidade).filter(Boolean))].sort();
     const sel = document.getElementById('monCidade');
     if (!sel) return;
-    const atual = sel.value;
     sel.innerHTML = '<option value="">Todas</option>';
     cidades.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c; opt.textContent = c;
       sel.appendChild(opt);
     });
-    sel.value = atual;
   } catch {}
 }
 
 function onCidadeChange() {
   const cidade = document.getElementById('monCidade').value;
-  if (cidade && CIDADES_COORDS[cidade]) {
-    map.setView(CIDADES_COORDS[cidade], 14);
+  if (cidade && cidadesCoords[cidade]) {
+    const c = cidadesCoords[cidade];
+    map.setView([c.lat, c.lng], 14);
   }
   loadMonitor();
 }
@@ -735,6 +727,15 @@ async function loadMonitor() {
     const url = cidade ? '/monitoramento?cidade=' + encodeURIComponent(cidade) : '/monitoramento';
     const r = await api(url);
     const j = await r.json();
+
+    // Atualiza coordenadas das cidades
+    if (j.cidades_coords) cidadesCoords = j.cidades_coords;
+
+    // Se cidade selecionada tem coords, centraliza
+    if (cidade && cidadesCoords[cidade]) {
+      const c = cidadesCoords[cidade];
+      map.setView([c.lat, c.lng], 14);
+    }
     document.getElementById('indAgendadas').textContent = j.indicadores.agendadas;
     document.getElementById('indProcurando').textContent = j.indicadores.procurando;
     document.getElementById('indProgresso').textContent = j.indicadores.progresso;
