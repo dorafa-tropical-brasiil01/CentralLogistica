@@ -60,13 +60,20 @@ function Configurar-VariaveisAmbiente {
 
     # Caminho do arquivo de configuracao
     $envFile = Join-Path $Repositorio "railway_env.json"
+    $envExample = Join-Path $Repositorio "railway_env.example.json"
 
     if (-not (Test-Path $envFile)) {
         Write-Host "AVISO: Arquivo railway_env.json nao encontrado." -ForegroundColor Yellow
         Write-Host "O deploy continuara, mas variaveis nao serao configuradas." -ForegroundColor Yellow
-        Write-Host "Crie o arquivo com as variaveis: DATABASE_URL, SECRET_KEY, CENTRAL_LOGISTICA_API_KEY," -ForegroundColor Yellow
-        Write-Host "CARDAPIO_WEBHOOK_URL, CARDAPIO_EMPRESA_ID, PUBLIC_BASE_URL." -ForegroundColor Yellow
         Write-Host ""
+        Write-Host "Para criar o arquivo:" -ForegroundColor Cyan
+        Write-Host "  1. Copie railway_env.example.json para railway_env.json" -ForegroundColor Yellow
+        Write-Host "  2. Preencha os valores reais (DATABASE_URL e auto-provisionada pelo Railway)" -ForegroundColor Yellow
+        Write-Host "  3. NUNCA commite railway_env.json (ja esta no .gitignore)" -ForegroundColor Yellow
+        Write-Host ""
+        if (Test-Path $envExample) {
+            Write-Host "Template encontrado: $envExample" -ForegroundColor Green
+        }
         return $true
     }
 
@@ -78,20 +85,24 @@ function Configurar-VariaveisAmbiente {
         return $false
     }
 
-    # Configurar cada variavel
+    # Variaveis consumidas por app/core/config.py e app/services/mapmatching.py
+    # Mantenha esta lista sincronizada com config.py
     $variaveis = @(
         "DATABASE_URL",
         "SECRET_KEY",
         "CENTRAL_LOGISTICA_API_KEY",
         "CARDAPIO_WEBHOOK_URL",
-        "CARDAPIO_EMPRESA_ID",
+        "CARDAPIO_WEBHOOK_SECRET",
         "PUBLIC_BASE_URL",
-        "TELEGRAM_BOT_TOKEN",
-        "GOOGLE_MAPS_API_KEY",
         "PIX_PROVIDER",
         "PIX_TOKEN",
         "PIX_WEBHOOK_SECRET",
-        "REMO_PIX_ONLINE_ENABLED"
+        "PIX_SANDBOX",
+        "REMO_PIX_ONLINE_ENABLED",
+        "VAPID_PUBLIC_KEY",
+        "VAPID_PRIVATE_KEY",
+        "VAPID_SUBJECT",
+        "OSRM_URL"
     )
 
     foreach ($var in $variaveis) {
@@ -111,6 +122,11 @@ function Configurar-VariaveisAmbiente {
 
     Write-Host ""
     Write-Host "Variaveis de ambiente configuradas." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "ALINHAMENTO Cardapio <-> CentralLogistica:" -ForegroundColor Cyan
+    Write-Host "  - CENTRAL_LOGISTICA_API_KEY deve ser IGUAL nos dois lados" -ForegroundColor Yellow
+    Write-Host "  - CARDAPIO_WEBHOOK_SECRET (aqui) = CENTRAL_LOGISTICA_API_KEY ou" -ForegroundColor Yellow
+    Write-Host "    LOGISTICA_WEBHOOK_SECRET (no Cardapio)" -ForegroundColor Yellow
     return $true
 }
 

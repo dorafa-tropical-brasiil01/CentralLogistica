@@ -1,0 +1,54 @@
+{
+  "_comentario": "TEMPLATE — copie para railway_env.json e preencha com valores reais. NUNCA commite railway_env.json (já está no .gitignore).",
+
+  "_grupo_banco": "=== Banco de Dados ===",
+  "DATABASE_URL": "",
+
+  "_grupo_seguranca": "=== Segurança ===",
+  "SECRET_KEY": "",
+  "CENTRAL_LOGISTICA_API_KEY": "",
+
+  "_grupo_webhook_cardapio": "=== Webhook para o Cardápio ===",
+  "CARDAPIO_WEBHOOK_URL": "",
+  "CARDAPIO_WEBHOOK_SECRET": "",
+
+  "_grupo_publico": "=== URL Pública ===",
+  "PUBLIC_BASE_URL": "",
+
+  "_grupo_pix": "=== PIX ===",
+  "PIX_PROVIDER": "mock",
+  "PIX_TOKEN": "",
+  "PIX_WEBHOOK_SECRET": "",
+  "PIX_SANDBOX": "1",
+  "REMO_PIX_ONLINE_ENABLED": "0",
+
+  "_grupo_vapid": "=== Web Push (VAPID) ===",
+  "VAPID_PUBLIC_KEY": "",
+  "VAPID_PRIVATE_KEY": "",
+  "VAPID_SUBJECT": "mailto:contato@dorafatropicalbrasil.com.br",
+
+  "__grupo_osrm": "=== OSRM (rotas) ===",
+  "OSRM_URL": "https://router.project-osrm.org",
+
+  "_notas_alinhamento": [
+    "ALINHAMENTO DE CHAVES Cardápio <-> CentralLogistica:",
+    "",
+    "1. Envio Cardápio -> CentralLogistica:",
+    "   Cardápio envia header 'x-api-key: <valor>'",
+    "   CentralLogistica valida contra CENTRAL_LOGISTICA_API_KEY",
+    "   => CENTRAL_LOGISTICA_API_KEY deve ser IGUAL nos dois lados",
+    "",
+    "2. Webhook CentralLogistica -> Cardápio:",
+    "   CentralLogistica envia 'Authorization: Bearer <CARDAPIO_WEBHOOK_SECRET>'",
+    "   Cardápio valida contra CENTRAL_LOGISTICA_API_KEY ou LOGISTICA_WEBHOOK_SECRET",
+    "   => CARDAPIO_WEBHOOK_SECRET (aqui) deve ser IGUAL a",
+    "      CENTRAL_LOGISTICA_API_KEY ou LOGISTICA_WEBHOOK_SECRET (no Cardápio)",
+    "",
+    "3. DATABASE_URL é provisionada automaticamente pelo Railway",
+    "   quando o serviço PostgreSQL é adicionado.",
+    "",
+    "4. VAPID_* pode ser gerado com: npx web-push generate-vapid-keys",
+    "",
+    "5. PIX_PROVIDER='mock' para desenvolvimento, 'pagbank' para produção."
+  ]
+}
