@@ -183,6 +183,7 @@
       <div class="nav-item" onclick="showModule('areas', this)"><span class="nav-icon">📍</span> Áreas</div>
       <div class="nav-item" onclick="showModule('entregadores', this)"><span class="nav-icon">🛵</span> Entregadores</div>
       <div class="nav-item" onclick="showModule('clientes', this)"><span class="nav-icon">🏪</span> Clientes</div>
+      <div class="nav-item" onclick="showModule('empresas', this)"><span class="nav-icon">🏢</span> Empresas</div>
     </nav>
     <div class="sidebar-footer">REMO v1.0</div>
   </aside>
@@ -453,6 +454,22 @@
           </div>
         </div>
       </div>
+
+      <!-- MÓDULO 9: EMPRESAS -->
+      <div class="module" id="mod-empresas">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-title" style="margin:0">Empresas</div>
+            <button class="btn btn-accent btn-sm" onclick="openEmpresaModal()">+ Nova empresa</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Nome</th><th>CNPJ</th><th>Frete</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="empTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -535,6 +552,40 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('cliModal')">Cancelar</button>
       <button class="btn btn-accent" onclick="saveCliente()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Empresa -->
+<div class="modal-bg" id="empModal">
+  <div class="modal">
+    <h3 id="empModalTitle">Nova empresa</h3>
+    <input type="hidden" id="empIdField" />
+    <div class="form-group"><label>ID (slug)</label><input id="empIdInput" type="text" placeholder="empresa-teste" /></div>
+    <div class="form-group"><label>Nome</label><input id="empNomeInput" type="text" placeholder="Empresa Teste" /></div>
+    <div class="form-group"><label>CNPJ</label><input id="empCnpjInput" type="text" placeholder="00.000.000/0001-00" /></div>
+    <div class="form-group"><label>Status</label><select id="empAtivoInput"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveEmpresa()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Frete da empresa -->
+<div class="modal-bg" id="freteModal">
+  <div class="modal">
+    <h3>Configuração de frete — <span id="freteEmpNome"></span></h3>
+    <input type="hidden" id="freteEmpId" />
+    <div class="form-group"><label><input type="checkbox" id="freteEnabled" /> Frete habilitado</label></div>
+    <div class="form-group"><label>URL de origem (Google Maps)</label><input id="freteOrigin" type="text" placeholder="https://www.google.com/maps/place/..." /></div>
+    <div class="form-group"><label>Taxa base (R$)</label><input id="freteBase" type="number" step="0.01" placeholder="5.00" /></div>
+    <div class="form-group"><label>Valor por km (R$)</label><input id="fretePerKm" type="number" step="0.01" placeholder="1.50" /></div>
+    <div class="form-group"><label>Valor mínimo (R$)</label><input id="freteMin" type="number" step="0.01" placeholder="5.00" /></div>
+    <div class="form-group"><label>Valor máximo (R$)</label><input id="freteMax" type="number" step="0.01" placeholder="50.00" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('freteModal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="saveFrete()">Salvar frete</button>
     </div>
   </div>
 </div>
@@ -631,7 +682,7 @@ function showModule(name, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('mod-' + name).classList.add('active');
   el.classList.add('active');
-  const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores', clientes: 'Clientes' };
+  const titles = { monitor: 'Monitoramento', financeiro: 'Financeiro', carteira: 'Carteira', relatorios: 'Relatórios', ordens: 'Ordens', areas: 'Áreas de Cobertura', entregadores: 'Entregadores', clientes: 'Clientes', empresas: 'Empresas' };
   document.getElementById('moduleTitle').textContent = titles[name] || name;
   currentModule = name;
   // Polling automático no módulo monitoramento (10s)
@@ -648,6 +699,7 @@ function showModule(name, el) {
   if (name === 'areas') loadAreas();
   if (name === 'entregadores') { loadEntregadores(); loadComissoes(); loadPushDebug(); }
   if (name === 'clientes') loadClientes();
+  if (name === 'empresas') loadEmpresasModule();
 }
 
 // MAPA
@@ -1790,6 +1842,99 @@ async function delCli(id) {
     const r = await api('/clientes/' + id, { method: 'DELETE' });
     if (r.ok) { toast('Cliente desativado'); loadClientes(); }
   } catch { toast('Erro'); }
+}
+
+// EMPRESAS
+async function loadEmpresasModule() {
+  try {
+    const r = await api('/empresas');
+    const j = await r.json();
+    const tb = document.getElementById('empTable');
+    if (!j.empresas.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nenhuma empresa cadastrada</td></tr>'; return; }
+    tb.innerHTML = j.empresas.map(e => `<tr><td style="font-family:monospace;font-size:12px">${e.id}</td><td>${e.nome}</td><td>${e.cnpj || '—'}</td><td><button class="btn btn-info btn-sm" onclick="configFrete('${e.id}', '${(e.nome||'').replace(/'/g,"\\'")}')">Configurar frete</button></td><td><span class="badge ${e.ativo ? 'badge-success' : 'badge-pending'}">${e.ativo ? 'Ativo' : 'Inativo'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editEmpresa('${e.id}')">Editar</button></td></tr>`).join('');
+  } catch { toast('Erro ao carregar empresas'); }
+}
+
+function openEmpresaModal() {
+  document.getElementById('empIdField').value = '';
+  document.getElementById('empModalTitle').textContent = 'Nova empresa';
+  document.getElementById('empIdInput').value = '';
+  document.getElementById('empIdInput').disabled = false;
+  document.getElementById('empNomeInput').value = '';
+  document.getElementById('empCnpjInput').value = '';
+  document.getElementById('empAtivoInput').value = 'true';
+  document.getElementById('empModal').classList.add('open');
+}
+
+async function editEmpresa(id) {
+  try {
+    const r = await api('/empresas');
+    const j = await r.json();
+    const e = j.empresas.find(x => x.id === id);
+    if (!e) return;
+    document.getElementById('empIdField').value = e.id;
+    document.getElementById('empModalTitle').textContent = 'Editar empresa';
+    document.getElementById('empIdInput').value = e.id;
+    document.getElementById('empIdInput').disabled = true;
+    document.getElementById('empNomeInput').value = e.nome;
+    document.getElementById('empCnpjInput').value = e.cnpj || '';
+    document.getElementById('empAtivoInput').value = e.ativo ? 'true' : 'false';
+    document.getElementById('empModal').classList.add('open');
+  } catch { toast('Erro'); }
+}
+
+async function saveEmpresa() {
+  const id = document.getElementById('empIdField').value;
+  const novoId = document.getElementById('empIdInput').value.trim();
+  const nome = document.getElementById('empNomeInput').value.trim();
+  const cnpj = document.getElementById('empCnpjInput').value.trim();
+  const ativo = document.getElementById('empAtivoInput').value === 'true';
+  if (!novoId || !nome) { toast('ID e nome obrigatórios'); return; }
+  try {
+    if (id) {
+      const r = await api('/empresas/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ nome, cnpj, ativo }) });
+      if (r.ok) { toast('Empresa salva'); closeModal('empModal'); loadEmpresasModule(); }
+      else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+    } else {
+      const r = await api('/empresas', { method: 'POST', body: JSON.stringify({ id: novoId, nome, cnpj }) });
+      if (r.ok) { toast('Empresa criada'); closeModal('empModal'); loadEmpresasModule(); }
+      else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+    }
+  } catch { toast('Erro de conexão'); }
+}
+
+async function configFrete(id, nome) {
+  document.getElementById('freteEmpId').value = id;
+  document.getElementById('freteEmpNome').textContent = nome;
+  try {
+    const r = await api('/empresas/' + encodeURIComponent(id) + '/frete');
+    const j = await r.json();
+    const f = j.frete || {};
+    document.getElementById('freteEnabled').checked = !!f.enabled;
+    document.getElementById('freteOrigin').value = f.origin_maps_url || '';
+    document.getElementById('freteBase').value = f.base ?? '';
+    document.getElementById('fretePerKm').value = f.per_km ?? '';
+    document.getElementById('freteMin').value = f.min_v ?? '';
+    document.getElementById('freteMax').value = f.max_v ?? '';
+    document.getElementById('freteModal').classList.add('open');
+  } catch { toast('Erro ao carregar frete'); }
+}
+
+async function saveFrete() {
+  const id = document.getElementById('freteEmpId').value;
+  const data = {
+    enabled: document.getElementById('freteEnabled').checked,
+    origin_maps_url: document.getElementById('freteOrigin').value.trim(),
+    base: document.getElementById('freteBase').value,
+    per_km: document.getElementById('fretePerKm').value,
+    min_v: document.getElementById('freteMin').value,
+    max_v: document.getElementById('freteMax').value,
+  };
+  try {
+    const r = await api('/empresas/' + encodeURIComponent(id) + '/frete', { method: 'PUT', body: JSON.stringify(data) });
+    if (r.ok) { toast('Frete salvo'); closeModal('freteModal'); }
+    else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
+  } catch { toast('Erro de conexão'); }
 }
 
 // UTIL

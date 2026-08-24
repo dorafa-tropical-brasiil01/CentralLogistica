@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from app.core.db import transaction
 from app.pix import service as pix_service
-from app.repositories import carteiras, empresas, movimentacoes_carteira, usuarios
+from app.repositories import carteiras, empresas, frete as frete_repo, movimentacoes_carteira, usuarios
 from app.services import abastecimento, caixa as caixa_service, movimentacoes
 
 bp = Blueprint("financeiro", __name__)
@@ -28,6 +28,17 @@ def criar_empresa():
         return jsonify({"error": "empresa_ja_existe"}), 409
 
     empresa = empresas.create(empresa_id, nome)
+    # Cria config de frete padrao habilitada para novas empresas
+    try:
+        frete_repo.upsert(
+            empresa_id=empresa_id,
+            enabled=True,
+            base=5.0,
+            per_km=1.50,
+            min_v=5.0,
+        )
+    except Exception:
+        pass
     return jsonify(empresa), 201
 
 

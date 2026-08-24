@@ -543,7 +543,31 @@ def push_teste():
 # --- Helpers ---
 
 def _serializar_ordem(o: dict) -> dict:
-    return {
+    import json as _json
+    from app.core.frete import extract_lat_lng, resolve_short_url
+
+    def _resolve_coords(url: str) -> dict | None:
+        if not url:
+            return None
+        try:
+            resolved = resolve_short_url(url)
+            coords = extract_lat_lng(resolved)
+            if coords:
+                return {"lat": coords[0], "lng": coords[1]}
+        except Exception:
+            pass
+        return None
+
+    payload = o.get("payload_json")
+    if isinstance(payload, str):
+        try:
+            payload = _json.loads(payload)
+        except Exception:
+            payload = {}
+    elif payload is None:
+        payload = {}
+
+    result = {
         "id": o.get("id"),
         "uuid": o.get("uuid"),
         "protocolo": o.get("protocolo"),
@@ -552,12 +576,56 @@ def _serializar_ordem(o: dict) -> dict:
         "status": o.get("status"),
         "taxa": float(o.get("taxa") or 0),
         "entregador_id": o.get("entregador_id"),
-        "payload": o.get("payload_json"),
+        "payload": payload,
         "criado_em": o.get("criado_em"),
         "atribuido_em": o.get("atribuido_em"),
         "em_rota_em": o.get("em_rota_em"),
         "entregue_em": o.get("entregue_em"),
     }
+
+    # Rota planejada via OSRM para ordens ativas
+    if o.get("status") in ("ATRIBUIDO", "EM_ROTA"):
+        origem_coords = _resolve_coords(payload.get("origin_maps_url", ""))
+        dest_coords = _resolve_coords(payload.get("client_maps_url", ""))
+        if origem_coords and dest_coords:
+            try:
+                from app.services.mapmatching import calcular_rota
+                rota = calcular_rota(
+                    (origem_coords["lat"], origem_coords["lng"]),
+                    (dest_coords["lat"], dest_coords["lng"]),
+                )
+                if rota:
+                    result["rota_planejada"] = [{"lat": p[0], "lng": p[1]} for p in rota]
+            except Exception:
+                pass
+
+        # Trilha com snap-to-roads se houver entregador
+        entregador_id = o.get("entregador_id")
+        if entregador_id:
+            try:
+                from app.core.db import connect
+                from app.services.mapmatching import snap_to_road
+                with connect() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT lat, lng FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 50",
+                        (entregador_id,),
+                    )
+                    rows = cur.fetchall()
+                    trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
+                    trilha_raw.reverse()
+                    if len(trilha_raw) >= 2:
+                        snapped = snap_to_road(trilha_raw)
+                        if snapped:
+                            result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in snapped]
+                        else:
+                            result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                    elif trilha_raw:
+                        result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+            except Exception:
+                pass
+
+    return result
 
 
 # --- Admin: criar usuários (protegido por API key) ---

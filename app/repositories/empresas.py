@@ -41,6 +41,27 @@ def create(empresa_id: str, nome: str, **campos: Any) -> dict[str, Any]:
         return dict(row)
 
 
+def update(empresa_id: str, **campos: Any) -> dict[str, Any] | None:
+    """Atualiza nome, cnpj e ativo de uma empresa."""
+    colunas = []
+    valores: list[Any] = []
+    for col in ("nome", "cnpj", "ativo"):
+        if col in campos and campos[col] is not None:
+            colunas.append(f"{col} = %s")
+            valores.append(campos[col])
+    if not colunas:
+        return get(empresa_id)
+    valores.append(empresa_id)
+    with transaction() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE empresas SET {', '.join(colunas)} WHERE id = %s RETURNING *",
+            tuple(valores),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def get(empresa_id: str) -> dict[str, Any] | None:
     with transaction() as conn:
         cur = conn.cursor()

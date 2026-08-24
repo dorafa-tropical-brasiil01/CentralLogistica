@@ -20,6 +20,8 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 
 from app.core.db import connect, transaction
+from app.repositories import empresas as empresas_repo
+from app.repositories import frete as frete_repo
 from app.repositories import usuarios as usuarios_repo
 from app.services import auth as auth_service
 
@@ -102,6 +104,21 @@ def setup():
                     logging.info("setup: criado usuario %s (id=%s)", u["username"], new_id)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    # Garante empresa-teste com config de frete habilitada
+    try:
+        from app.repositories import empresas as emp_repo, frete as frete_repo
+        if not emp_repo.get("empresa-teste"):
+            emp_repo.create("empresa-teste", "Empresa Teste")
+        frete_repo.upsert(
+            empresa_id="empresa-teste",
+            enabled=True,
+            base=5.0,
+            per_km=1.50,
+            min_v=5.0,
+        )
+    except Exception:
+        pass
 
     return jsonify({"ok": True, "criados": criados, "mensagem": "Usuarios padrao criados" if criados else "Usuarios ja existiam"})
 
@@ -1170,6 +1187,143 @@ def atualizar_comissao(empresa_id: str):
             return _err("empresa_nao_encontrada", 404)
 
     return jsonify({"ok": True, "comissao_entregador_pct": pct})
+
+
+@bp.post("/empresas")
+def criar_empresa():
+    """Cria uma nova empresa (admin)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    empresa_id = (data.get("id") or "").strip()
+    nome = (data.get("nome") or "").strip()
+    if not empresa_id or not nome:
+        return _err("id e nome obrigatórios", 400)
+
+    if empresas_repo.get(empresa_id):
+        return _err("empresa_ja_existe", 409)
+
+    try:
+        emp = empresas_repo.create(empresa_id, nome, cnpj=data.get("cnpj"))
+    except Exception as e:
+        logging.getLogger("admin").exception("Erro ao criar empresa")
+        return _err(str(e), 500)
+
+    # Cria config de frete padrão desabilitada
+    try:
+        frete_repo.upsert(empresa_id=empresa_id, enabled=False)
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "empresa": _serializar_empresa(emp)})
+
+
+@bp.put("/empresas/<empresa_id>")
+def editar_empresa(empresa_id: str):
+    """Edita nome, cnpj e ativo de uma empresa (admin)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    campos: dict[str, Any] = {}
+    if "nome" in data:
+        nome = (data.get("nome") or "").strip()
+        if not nome:
+            return _err("nome obrigatório", 400)
+        campos["nome"] = nome
+    if "cnpj" in data:
+        campos["cnpj"] = (data.get("cnpj") or "").strip() or None
+    if "ativo" in data:
+        campos["ativo"] = bool(data.get("ativo"))
+
+    if not campos:
+        return _err("nada_para_atualizar", 400)
+
+    try:
+        emp = empresas_repo.update(empresa_id, **campos)
+    except Exception as e:
+        logging.getLogger("admin").exception("Erro ao editar empresa")
+        return _err(str(e), 500)
+
+    if not emp:
+        return _err("empresa_nao_encontrada", 404)
+
+    return jsonify({"ok": True, "empresa": _serializar_empresa(emp)})
+
+
+@bp.get("/empresas/<empresa_id>/frete")
+def obter_frete_empresa(empresa_id: str):
+    """Obtém a configuração de frete de uma empresa (admin)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    if not empresas_repo.get(empresa_id):
+        return _err("empresa_nao_encontrada", 404)
+
+    cfg = frete_repo.get(empresa_id)
+    if not cfg:
+        return jsonify({"ok": True, "frete": {"enabled": False, "origin_maps_url": "", "base": None, "per_km": None, "min_v": None, "max_v": None}})
+    return jsonify({"ok": True, "frete": cfg})
+
+
+@bp.put("/empresas/<empresa_id>/frete")
+def salvar_frete_empresa(empresa_id: str):
+    """Salva a configuração de frete de uma empresa (admin)."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    if not empresas_repo.get(empresa_id):
+        return _err("empresa_nao_encontrada", 404)
+
+    data = request.get_json(silent=True) or {}
+
+    def _num(key):
+        v = data.get(key)
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        cfg = frete_repo.upsert(
+            empresa_id=empresa_id,
+            enabled=bool(data.get("enabled")),
+            origin_maps_url=data.get("origin_maps_url"),
+            base=_num("base"),
+            per_km=_num("per_km"),
+            min_v=_num("min_v"),
+            max_v=_num("max_v"),
+        )
+    except Exception as e:
+        logging.getLogger("admin").exception("Erro ao salvar frete")
+        return _err(str(e), 500)
+
+    return jsonify({"ok": True, "frete": cfg})
+
+
+def _serializar_empresa(row: dict) -> dict:
+    """Serializa uma empresa para resposta JSON do admin."""
+    cfg = row.get("config")
+    if isinstance(cfg, str):
+        try:
+            cfg = json.loads(cfg)
+        except Exception:
+            cfg = {}
+    cfg = cfg or {}
+    return {
+        "id": row["id"],
+        "nome": row["nome"],
+        "cnpj": row.get("cnpj"),
+        "ativo": row.get("ativo"),
+        "comissao_entregador_pct": float(cfg.get("comissao_entregador_pct", 70.0)),
+    }
 
 
 # ============================================================

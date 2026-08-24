@@ -453,6 +453,11 @@
       zonesLayer = L.layerGroup().addTo(map);
       routesLayer = L.layerGroup().addTo(map);
 
+      // Marca interacao do usuario para nao resetar zoom/pan no polling
+      map._userInteracted = false;
+      map.on('zoomstart', () => { map._userInteracted = true; });
+      map.on('dragstart', () => { map._userInteracted = true; });
+
       renderZonas();
     }
 
@@ -542,13 +547,25 @@
             L.marker([loc.lat, loc.lng], { icon: dIcon }).addTo(markersLayer)
               .bindPopup('<b>' + (entregador.nome || 'Entregador') + '</b><br>Em rota');
 
-            // Linha de rota
-            L.polyline([[loc.lat, loc.lng], coords], {
-              color: '#00d4aa',
-              weight: 3,
-              opacity: 0.6,
-              dashArray: '8, 8',
-            }).addTo(routesLayer);
+            // Rota planejada via OSRM (azul tracejado, seguindo ruas)
+            if (o.rota_planejada && o.rota_planejada.length > 1) {
+              const routePoints = o.rota_planejada.map(p => [p.lat, p.lng]);
+              L.polyline(routePoints, { color: '#3a86ff', weight: 3, opacity: .5 }).addTo(routesLayer);
+            } else {
+              // Fallback: linha reta se nao houver rota planejada
+              L.polyline([[loc.lat, loc.lng], coords], {
+                color: '#00d4aa',
+                weight: 3,
+                opacity: 0.6,
+                dashArray: '8, 8',
+              }).addTo(routesLayer);
+            }
+
+            // Trilha realizada com snap-to-roads (verde solido)
+            if (o.trilha && o.trilha.length > 1) {
+              const points = o.trilha.map(t => [t.lat, t.lng]);
+              L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(routesLayer);
+            }
           }
         }
       });
