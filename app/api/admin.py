@@ -341,26 +341,9 @@ def monitoramento():
                 "corrida_ativa": corrida_ativa,
             })
 
-        # Trilha de rastreamento para entregadores com localização
-        from app.services.mapmatching import snap_to_road_robusto
-        for ent in entregadores:
-            if ent.get("localizacao"):
-                cur.execute("""
-                    SELECT lat, lng, criado_em
-                    FROM rastreamento
-                    WHERE usuario_id = %s
-                    ORDER BY criado_em DESC LIMIT 50
-                """, (ent["id"],))
-                rows = cur.fetchall()
-                trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
-                trilha_raw.reverse()  # ordem cronológica
-
-                # Snap-to-roads robusto: tenta match, fallback para roteamento entre pontos
-                trilha_robusta = snap_to_road_robusto(trilha_raw)
-                ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
-                ent["trilha_snapped"] = len(trilha_robusta) != len(trilha_raw)
-                logging.info("monitoramento: trilha user=%s (%d pts raw → %d pts, snapped=%s)",
-                             ent["id"], len(trilha_raw), len(ent["trilha"]), ent["trilha_snapped"])
+        # Trilha NÃO é calculada no polling — só posição atual.
+        # Trilha é carregada sob demanda via /entregadores/<id>/trilha
+        # quando o operador seleciona um motoboy específico.
 
     return jsonify({
         "ok": True,
@@ -375,6 +358,65 @@ def monitoramento():
         "entregadores": entregadores,
         "zonas": zonas,
     })
+
+
+@bp.get("/entregadores/<int:entregador_id>/trilha")
+def trilha_entregador(entregador_id: int):
+    """Retorna a trilha de um entregador específico (sob demanda).
+
+    Só é chamado quando o operador seleciona um motoboy no mapa.
+    Usa snap-to-roads com amostragem para não exceder limite do OSRM.
+    """
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    limite = min(int(request.args.get("limit", 50)), 100)
+
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lat, lng, criado_em
+            FROM rastreamento
+            WHERE usuario_id = %s
+            ORDER BY criado_em DESC LIMIT %s
+        """, (entregador_id, limite))
+        rows = cur.fetchall()
+
+    if not rows:
+        return jsonify({"ok": True, "trilha": [], "snapped": False})
+
+    trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
+    trilha_raw.reverse()  # ordem cronológica
+
+    # Amostragem: OSRM match aceita no máximo ~20 pontos
+    # Pega 1 a cada N pontos para ficar abaixo do limite
+    if len(trilha_raw) > 20:
+        step = len(trilha_raw) // 20
+        amostrada = [trilha_raw[0]] + trilha_raw[1::step] + [trilha_raw[-1]]
+        # Remove duplicatas
+        seen = set()
+        amostrada = [p for p in amostrada if not (p in seen or seen.add(p))]
+    else:
+        amostrada = trilha_raw
+
+    from app.services.mapmatching import snap_to_road
+    snapped = snap_to_road(amostrada) if len(amostrada) >= 2 else None
+
+    if snapped:
+        trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
+        return jsonify({"ok": True, "trilha": trilha, "snapped": True})
+
+    # Fallback simples: rota entre primeiro e último ponto (1 chamada OSRM)
+    from app.services.mapmatching import calcular_rota
+    rota = calcular_rota(trilha_raw[0], trilha_raw[-1])
+    if rota:
+        trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
+        return jsonify({"ok": True, "trilha": trilha, "snapped": True})
+
+    # Último recurso: pontos crus
+    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+    return jsonify({"ok": True, "trilha": trilha, "snapped": False})
 
 
 # ============================================================

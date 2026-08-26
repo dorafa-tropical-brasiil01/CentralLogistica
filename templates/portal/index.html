@@ -846,13 +846,7 @@ async function loadAcompanhar() {
         const routePoints = o.rota_planejada.map(p => [p.lat, p.lng]);
         L.polyline(routePoints, { color: '#3a86ff', weight: 3, opacity: .5 }).addTo(mainLayers);
       }
-      // Trilha realizada (verde sólido, snap-to-roads)
-      if (o.trilha && o.trilha.length > 1) {
-        const points = o.trilha.map(t => [t.lat, t.lng]);
-        L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(mainLayers);
-        allPoints.push([o.trilha[0].lat, o.trilha[0].lng]);
-        allPoints.push([o.trilha[o.trilha.length-1].lat, o.trilha[o.trilha.length-1].lng]);
-      }
+      // Trilha NÃO é mostrada no acompanhar (polling) — só no rastrear ordem específica
       // Entregador (motoboy)
       if (o.entregador_localizacao) {
         const loc = o.entregador_localizacao;

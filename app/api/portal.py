@@ -592,10 +592,27 @@ def rastrear_ordem(ordem_id: int):
                 trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
                 trilha_raw.reverse()
 
-                # Snap-to-roads robusto: tenta match, fallback para roteamento
-                from app.services.mapmatching import snap_to_road_robusto
-                trilha_robusta = snap_to_road_robusto(trilha_raw)
-                trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
+                # Amostragem: OSRM match aceita no máximo ~20 pontos
+                if len(trilha_raw) > 20:
+                    step = len(trilha_raw) // 20
+                    amostrada = [trilha_raw[0]] + trilha_raw[1::step] + [trilha_raw[-1]]
+                    seen = set()
+                    amostrada = [p for p in amostrada if not (p in seen or seen.add(p))]
+                else:
+                    amostrada = trilha_raw
+
+                # Snap-to-roads
+                from app.services.mapmatching import snap_to_road, calcular_rota
+                snapped = snap_to_road(amostrada) if len(amostrada) >= 2 else None
+                if snapped:
+                    trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
+                else:
+                    # Fallback: rota entre primeiro e último (1 chamada)
+                    rota = calcular_rota(trilha_raw[0], trilha_raw[-1]) if len(trilha_raw) >= 2 else None
+                    if rota:
+                        trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
+                    else:
+                        trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
                 entregador = {
                     "nome": ent.get("nome"),
                     "localizacao": loc,
@@ -676,26 +693,11 @@ def acompanhar():
                 except Exception:
                     loc = None
 
-            # Trilha com snap-to-roads
+            # Trilha NÃO é calculada no acompanhar (polling) — só posição atual.
+            # Trilha é carregada sob demanda via /ordens/<id>/rastrear
+            # quando o cliente seleciona uma ordem específica.
             trilha = []
             trilha_snapped = False
-            if r.get("entregador_id"):
-                cur.execute("""
-                    SELECT lat, lng FROM rastreamento
-                    WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 50
-                """, (r["entregador_id"],))
-                rows = cur.fetchall()
-                trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
-                trilha_raw.reverse()
-
-                # Snap-to-roads robusto: tenta match, fallback para roteamento
-                if len(trilha_raw) >= 2:
-                    from app.services.mapmatching import snap_to_road_robusto
-                    trilha_robusta = snap_to_road_robusto(trilha_raw)
-                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
-                    trilha_snapped = len(trilha_robusta) != len(trilha_raw)
-                else:
-                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
 
             # Rota planejada via OSRM
             rota_planejada = None

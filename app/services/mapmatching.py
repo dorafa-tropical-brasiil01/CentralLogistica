@@ -84,42 +84,33 @@ def snap_to_road(points: list[tuple[float, float]]) -> list[tuple[float, float]]
 
 
 def snap_to_road_robusto(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Snap-to-roads com fallback robusto.
+    """Snap-to-roads com fallback. Mantida para compatibilidade.
 
-    Tenta OSRM match primeiro. Se falhar, roteia entre pares de pontos
-    consecutivos e concatena os resultados. Se tudo falhar, retorna os
-    pontos originais.
-
-    Sempre retorna uma lista (nunca None).
+    Usa amostragem para respeitar o limite do OSRM (max ~20 pontos).
+    Fallback: rota entre primeiro e último ponto (1 chamada OSRM).
     """
     if not points:
         return []
     if len(points) < 2:
         return list(points)
 
-    # 1. Tenta snap-to-roads (OSRM match)
-    snapped = snap_to_road(points)
+    # Amostragem para OSRM match (max ~20 pontos)
+    pts = points
+    if len(pts) > 20:
+        step = len(pts) // 20
+        pts = [pts[0]] + pts[1::step] + [pts[-1]]
+        seen = set()
+        pts = [p for p in pts if not (p in seen or seen.add(p))]
+
+    snapped = snap_to_road(pts)
     if snapped and len(snapped) >= 2:
         return snapped
 
-    # 2. Fallback: rotear entre pares consecutivos e concatenar
-    logger.info("snap_to_road falhou, usando fallback de roteamento entre pontos consecutivos")
-    result: list[tuple[float, float]] = [points[0]]
-    for i in range(len(points) - 1):
-        rota = calcular_rota(points[i], points[i + 1])
-        if rota and len(rota) >= 2:
-            # Adiciona todos os pontos exceto o primeiro (já está no resultado)
-            result.extend(rota[1:])
-        else:
-            # Se a rota entre este par falhar, adiciona o ponto direto
-            if result[-1] != points[i + 1]:
-                result.append(points[i + 1])
+    # Fallback: rota entre primeiro e último (1 chamada)
+    rota = calcular_rota(points[0], points[-1])
+    if rota and len(rota) >= 2:
+        return rota
 
-    if len(result) >= 2:
-        logger.info("fallback de roteamento: %d pontos", len(result))
-        return result
-
-    # 3. Último recurso: pontos originais
     return list(points)
 
 

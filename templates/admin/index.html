@@ -633,6 +633,9 @@ let currentUser = null;
 let map = null, markersLayer = null, zonesLayer = null, routesLayer = null;
 let monitorTimer = null;
 let currentModule = 'monitor';
+let motoboySelecionado = null;  // ID do entregador selecionado para ver trilha
+let trilhaLayer = null;  // camada da trilha do motoboy selecionado
+let trilhaTimer = null;  // timer para atualizar trilha do motoboy selecionado
 let chartHora = null, chartDia = null;
 let empresasCache = [];
 
@@ -804,6 +807,64 @@ async function limparDados() {
   } catch (err) { alert('Erro: ' + err.message); }
 }
 
+async function selecionarMotoboy(entregadorId) {
+  // Toggle: se clicou no mesmo, desseleciona
+  if (motoboySelecionado === entregadorId) {
+    motoboySelecionado = null;
+    if (trilhaLayer) { trilhaLayer.clearLayers(); trilhaLayer = null; }
+    if (trilhaTimer) { clearInterval(trilhaTimer); trilhaTimer = null; }
+    toast('Trilha ocultada');
+    loadMonitor();
+    return;
+  }
+  motoboySelecionado = entregadorId;
+  toast('Carregando trilha...');
+  await carregarTrilhaMotoboy(entregadorId);
+  // Atualiza trilha a cada 15s (não 10s para não sobrecarregar OSRM)
+  if (trilhaTimer) clearInterval(trilhaTimer);
+  trilhaTimer = setInterval(() => carregarTrilhaMotoboy(entregadorId), 15000);
+  loadMonitor(); // re-renderiza para destacar o motoboy selecionado
+}
+
+async function carregarTrilhaMotoboy(entregadorId) {
+  try {
+    const r = await api('/entregadores/' + entregadorId + '/trilha?limit=50');
+    const j = await r.json();
+    if (!j.ok) return;
+
+    // Limpa trilha anterior
+    if (trilhaLayer) trilhaLayer.clearLayers();
+    else trilhaLayer = L.layerGroup().addTo(map);
+
+    if (!j.trilha || j.trilha.length < 2) {
+      toast('Sem trilha disponível para este entregador');
+      return;
+    }
+
+    // Encontra a cor do entregador
+    const ent = (window._lastMonitorData?.entregadores || []).find(e => e.id === entregadorId);
+    const cor = ent?._cor || '#00d4aa';
+
+    // Desenha a trilha com a cor do motoboy
+    const points = j.trilha.map(t => [t.lat, t.lng]);
+    L.polyline(points, { color: cor, weight: 4, opacity: 0.85 }).addTo(trilhaLayer);
+
+    // Marcadores de início (verde) e fim (vermelho)
+    const startIcon = L.divIcon({ className: '', html: '<div style="background:#00d4aa;color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid #fff">▶</div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+    const endIcon = L.divIcon({ className: '', html: '<div style="background:#e76f51;color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid #fff">●</div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+    L.marker(points[0], { icon: startIcon }).addTo(trilhaLayer).bindPopup('Início da trilha');
+    L.marker(points[points.length - 1], { icon: endIcon }).addTo(trilhaLayer).bindPopup('Posição atual');
+
+    // Ajusta zoom para mostrar a trilha
+    const bounds = L.latLngBounds(points);
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+
+    toast('Trilha carregada: ' + j.trilha.length + ' pontos' + (j.snapped ? ' (seguindo ruas)' : ''));
+  } catch (err) {
+    toast('Erro ao carregar trilha');
+  }
+}
+
 async function loadMonitor() {
   try {
     const cidade = document.getElementById('monCidade') ? document.getElementById('monCidade').value : '';
@@ -824,8 +885,10 @@ async function loadMonitor() {
     document.getElementById('indProgresso').textContent = j.indicadores.progresso;
     document.getElementById('indEncerrados').textContent = j.indicadores.encerrados;
     document.getElementById('mapStats').textContent = j.ordens.length + ' ordens • ' + j.entregadores.filter(e => e.localizacao).length + ' online';
+    window._lastMonitorData = j;  // salva para carregarTrilhaMotoboy encontrar cores
 
     markersLayer.clearLayers(); routesLayer.clearLayers(); zonesLayer.clearLayers();
+    // Não limpa trilhaLayer aqui — ela é gerenciada por selecionarMotoboy
 
     // Zonas de cobertura (polígonos)
     if (j.zonas && j.zonas.length) {
@@ -870,16 +933,22 @@ async function loadMonitor() {
       }
     });
 
-    // Marcadores de entregadores (motoboy)
-    j.entregadores.forEach(e => {
+    // Marcadores de entregadores (motoboy) — clicável para ver trilha
+    const CORES_TRILHA = ['#00d4aa', '#3a86ff', '#f59e0b', '#ec4899', '#8b5cf6', '#10b981', '#ef4444', '#6366f1'];
+    j.entregadores.forEach((e, idx) => {
       if (!e.localizacao) return;
-      const icon = L.divIcon({ className: '', html: '<div style="background:#3a86ff;color:#fff;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)">🏍️</div>', iconSize: [36, 36], iconAnchor: [18, 18] });
-      L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador' + (e.corrida_ativa ? '<br>Status: ' + e.corrida_ativa : '') + (e.trilha ? '<br>Trilha: ' + e.trilha.length + ' pontos' : ''));
-      // Trilha do percurso (se tiver 2+ pontos)
-      if (e.trilha && e.trilha.length > 1) {
-        const points = e.trilha.map(t => [t.lat, t.lng]);
-        L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(routesLayer);
-      }
+      const cor = CORES_TRILHA[idx % CORES_TRILHA.length];
+      e._cor = cor;
+      const isSelected = motoboySelecionado === e.id;
+      const bgColor = isSelected ? cor : '#3a86ff';
+      const border = isSelected ? '4px solid ' + cor : '3px solid #fff';
+      const icon = L.divIcon({ className: '', html: '<div style="background:' + bgColor + ';color:#fff;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:' + border + ';box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer">🏍️</div>', iconSize: [38, 38], iconAnchor: [19, 19] });
+      const m = L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer);
+      const popupHtml = '<b>' + (e.nome || 'Entregador') + '</b><br>' +
+        (e.corrida_ativa ? 'Status: ' + e.corrida_ativa + '<br>' : '') +
+        '<button class="btn btn-accent btn-sm" style="margin-top:6px" onclick="selecionarMotoboy(' + e.id + ')">Ver trilha</button>';
+      m.bindPopup(popupHtml);
+      m.on('click', () => selecionarMotoboy(e.id));
     });
 
     // Tabela de status de entregadores

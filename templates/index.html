@@ -563,11 +563,7 @@
               }).addTo(routesLayer);
             }
 
-            // Trilha realizada com snap-to-roads (verde solido)
-            if (o.trilha && o.trilha.length > 1) {
-              const points = o.trilha.map(t => [t.lat, t.lng]);
-              L.polyline(points, { color: '#00d4aa', weight: 4, opacity: .8 }).addTo(routesLayer);
-            }
+            // Trilha NÃO é mostrada na listagem — só posição atual do motoboy
           }
         }
       });

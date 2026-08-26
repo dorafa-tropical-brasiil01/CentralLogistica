@@ -599,26 +599,8 @@ def _serializar_ordem(o: dict) -> dict:
             except Exception:
                 pass
 
-        # Trilha com snap-to-roads robusto se houver entregador
-        entregador_id = o.get("entregador_id")
-        if entregador_id:
-            try:
-                from app.core.db import connect
-                from app.services.mapmatching import snap_to_road_robusto
-                with connect() as conn:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "SELECT lat, lng FROM rastreamento WHERE usuario_id = %s ORDER BY criado_em DESC LIMIT 50",
-                        (entregador_id,),
-                    )
-                    rows = cur.fetchall()
-                    trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
-                    trilha_raw.reverse()
-                    if trilha_raw:
-                        trilha_robusta = snap_to_road_robusto(trilha_raw)
-                        result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
-            except Exception:
-                pass
+        # Trilha NÃO é calculada na listagem de ordens — só posição atual.
+        # A trilha é carregada sob demanda quando necessário.
 
     return result
 
