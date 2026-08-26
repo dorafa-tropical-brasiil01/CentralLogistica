@@ -599,12 +599,12 @@ def _serializar_ordem(o: dict) -> dict:
             except Exception:
                 pass
 
-        # Trilha com snap-to-roads se houver entregador
+        # Trilha com snap-to-roads robusto se houver entregador
         entregador_id = o.get("entregador_id")
         if entregador_id:
             try:
                 from app.core.db import connect
-                from app.services.mapmatching import snap_to_road
+                from app.services.mapmatching import snap_to_road_robusto
                 with connect() as conn:
                     cur = conn.cursor()
                     cur.execute(
@@ -614,14 +614,9 @@ def _serializar_ordem(o: dict) -> dict:
                     rows = cur.fetchall()
                     trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
                     trilha_raw.reverse()
-                    if len(trilha_raw) >= 2:
-                        snapped = snap_to_road(trilha_raw)
-                        if snapped:
-                            result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in snapped]
-                        else:
-                            result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
-                    elif trilha_raw:
-                        result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                    if trilha_raw:
+                        trilha_robusta = snap_to_road_robusto(trilha_raw)
+                        result["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
             except Exception:
                 pass
 

@@ -83,6 +83,46 @@ def snap_to_road(points: list[tuple[float, float]]) -> list[tuple[float, float]]
         return None
 
 
+def snap_to_road_robusto(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Snap-to-roads com fallback robusto.
+
+    Tenta OSRM match primeiro. Se falhar, roteia entre pares de pontos
+    consecutivos e concatena os resultados. Se tudo falhar, retorna os
+    pontos originais.
+
+    Sempre retorna uma lista (nunca None).
+    """
+    if not points:
+        return []
+    if len(points) < 2:
+        return list(points)
+
+    # 1. Tenta snap-to-roads (OSRM match)
+    snapped = snap_to_road(points)
+    if snapped and len(snapped) >= 2:
+        return snapped
+
+    # 2. Fallback: rotear entre pares consecutivos e concatenar
+    logger.info("snap_to_road falhou, usando fallback de roteamento entre pontos consecutivos")
+    result: list[tuple[float, float]] = [points[0]]
+    for i in range(len(points) - 1):
+        rota = calcular_rota(points[i], points[i + 1])
+        if rota and len(rota) >= 2:
+            # Adiciona todos os pontos exceto o primeiro (já está no resultado)
+            result.extend(rota[1:])
+        else:
+            # Se a rota entre este par falhar, adiciona o ponto direto
+            if result[-1] != points[i + 1]:
+                result.append(points[i + 1])
+
+    if len(result) >= 2:
+        logger.info("fallback de roteamento: %d pontos", len(result))
+        return result
+
+    # 3. Último recurso: pontos originais
+    return list(points)
+
+
 def calcular_rota(
     origem: tuple[float, float],
     destino: tuple[float, float],

@@ -779,6 +779,7 @@ let rastrearLayers = null;
 // MAPA PRINCIPAL (fullscreen)
 let mainMap = null;
 let mainLayers = null;
+let zonesLayer = null;
 let acomInterval = null;
 
 function initMainMap() {
@@ -787,6 +788,7 @@ function initMainMap() {
   const zoom = empresaCoords ? 14 : 13;
   mainMap = L.map('map', { zoomControl: true, attributionControl: false }).setView(center, zoom);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(mainMap);
+  zonesLayer = L.layerGroup().addTo(mainMap);
   mainLayers = L.layerGroup().addTo(mainMap);
   mainMap._userInteracted = false;
   mainMap.on('zoomstart', () => { mainMap._userInteracted = true; });
@@ -810,6 +812,19 @@ async function loadAcompanhar() {
     // Tem ordens ativas — renderiza no mapa principal
     if (!mainMap) initMainMap();
     mainLayers.clearLayers();
+    if (zonesLayer) zonesLayer.clearLayers();
+
+    // Zonas de cobertura (polígonos)
+    if (j.zonas && j.zonas.length) {
+      j.zonas.forEach(z => {
+        if (!z.poligono || z.poligono.length < 3) return;
+        const poly = L.polygon(z.poligono, {
+          color: z.cor || '#00d4aa', weight: 2, fillOpacity: 0.12, opacity: 0.6
+        });
+        poly.bindTooltip((z.nome || 'Zona') + ' — R$ ' + Number(z.taxa).toFixed(2), { sticky: true });
+        poly.addTo(zonesLayer);
+      });
+    }
 
     const allPoints = [];
 

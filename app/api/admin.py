@@ -208,6 +208,37 @@ def monitoramento():
                 except Exception:
                     pass
 
+        # Zonas de cobertura ativas (para desenhar no mapa)
+        cur.execute("""
+            SELECT id, nome, cidade, taxa, cor, poligono, status
+            FROM areas_cobertura
+            WHERE status = 'ATIVO'
+        """)
+        zonas = []
+        for r in (dict(x) for x in cur.fetchall()):
+            poligono = r.get("poligono")
+            if isinstance(poligono, str):
+                try:
+                    poligono = json.loads(poligono)
+                except Exception:
+                    poligono = None
+            if not poligono or not isinstance(poligono, list) or len(poligono) < 3:
+                continue
+            # Normaliza: pode ser [[lat,lng],...] ou GeoJSON
+            pts = poligono
+            if isinstance(poligono[0], dict) and "coordinates" in poligono:
+                pts = poligono["coordinates"][0]
+            elif not isinstance(poligono[0], (list, tuple)):
+                continue
+            zonas.append({
+                "id": r["id"],
+                "nome": r.get("nome"),
+                "cidade": r.get("cidade"),
+                "taxa": float(r.get("taxa") or 0),
+                "cor": r.get("cor") or "#00d4aa",
+                "poligono": [[p[0], p[1]] for p in pts],
+            })
+
         # Indicadores por status (últimas 6h)
         cur.execute("""
             SELECT status, COUNT(*) as total
@@ -311,7 +342,7 @@ def monitoramento():
             })
 
         # Trilha de rastreamento para entregadores com localização
-        from app.services.mapmatching import snap_to_road
+        from app.services.mapmatching import snap_to_road_robusto
         for ent in entregadores:
             if ent.get("localizacao"):
                 cur.execute("""
@@ -324,19 +355,12 @@ def monitoramento():
                 trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
                 trilha_raw.reverse()  # ordem cronológica
 
-                # Snap-to-roads: ajusta pontos GPS à malha viária
-                trilha_snapped = None
-                if len(trilha_raw) >= 2:
-                    trilha_snapped = snap_to_road(trilha_raw)
-
-                if trilha_snapped:
-                    ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_snapped]
-                    ent["trilha_snapped"] = True
-                else:
-                    ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
-                    ent["trilha_snapped"] = False
-                logging.info("monitoramento: trilha user=%s (%d pts, snapped=%s)",
-                             ent["id"], len(ent["trilha"]), ent["trilha_snapped"])
+                # Snap-to-roads robusto: tenta match, fallback para roteamento entre pontos
+                trilha_robusta = snap_to_road_robusto(trilha_raw)
+                ent["trilha"] = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
+                ent["trilha_snapped"] = len(trilha_robusta) != len(trilha_raw)
+                logging.info("monitoramento: trilha user=%s (%d pts raw → %d pts, snapped=%s)",
+                             ent["id"], len(trilha_raw), len(ent["trilha"]), ent["trilha_snapped"])
 
     return jsonify({
         "ok": True,
@@ -349,6 +373,7 @@ def monitoramento():
         },
         "ordens": ordens,
         "entregadores": entregadores,
+        "zonas": zonas,
     })
 
 

@@ -825,7 +825,19 @@ async function loadMonitor() {
     document.getElementById('indEncerrados').textContent = j.indicadores.encerrados;
     document.getElementById('mapStats').textContent = j.ordens.length + ' ordens • ' + j.entregadores.filter(e => e.localizacao).length + ' online';
 
-    markersLayer.clearLayers(); routesLayer.clearLayers();
+    markersLayer.clearLayers(); routesLayer.clearLayers(); zonesLayer.clearLayers();
+
+    // Zonas de cobertura (polígonos)
+    if (j.zonas && j.zonas.length) {
+      j.zonas.forEach(z => {
+        if (!z.poligono || z.poligono.length < 3) return;
+        const poly = L.polygon(z.poligono, {
+          color: z.cor || '#00d4aa', weight: 2, fillOpacity: 0.12, opacity: 0.6
+        });
+        poly.bindTooltip((z.nome || 'Zona') + ' — R$ ' + Number(z.taxa).toFixed(2), { sticky: true });
+        poly.addTo(zonesLayer);
+      });
+    }
 
     // Marcadores de ordens
     j.ordens.forEach(o => {

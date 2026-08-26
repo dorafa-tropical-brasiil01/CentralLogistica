@@ -592,22 +592,10 @@ def rastrear_ordem(ordem_id: int):
                 trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
                 trilha_raw.reverse()
 
-                # Snap-to-roads via OSRM
-                trilha = []
-                if len(trilha_raw) >= 2:
-                    from app.services.mapmatching import snap_to_road, calcular_rota
-                    snapped = snap_to_road(trilha_raw)
-                    if snapped:
-                        trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
-                    else:
-                        # Fallback: rota planejada entre primeiro e ultimo ponto
-                        rota = calcular_rota(trilha_raw[0], trilha_raw[-1])
-                        if rota:
-                            trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
-                        else:
-                            trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
-                else:
-                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                # Snap-to-roads robusto: tenta match, fallback para roteamento
+                from app.services.mapmatching import snap_to_road_robusto
+                trilha_robusta = snap_to_road_robusto(trilha_raw)
+                trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
                 entregador = {
                     "nome": ent.get("nome"),
                     "localizacao": loc,
@@ -700,21 +688,12 @@ def acompanhar():
                 trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
                 trilha_raw.reverse()
 
-                # Snap-to-roads
+                # Snap-to-roads robusto: tenta match, fallback para roteamento
                 if len(trilha_raw) >= 2:
-                    from app.services.mapmatching import snap_to_road, calcular_rota
-                    snapped = snap_to_road(trilha_raw)
-                    if snapped:
-                        trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
-                        trilha_snapped = True
-                    else:
-                        # Fallback: rota planejada entre primeiro e ultimo ponto
-                        rota = calcular_rota(trilha_raw[0], trilha_raw[-1])
-                        if rota:
-                            trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
-                            trilha_snapped = True
-                        else:
-                            trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                    from app.services.mapmatching import snap_to_road_robusto
+                    trilha_robusta = snap_to_road_robusto(trilha_raw)
+                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_robusta]
+                    trilha_snapped = len(trilha_robusta) != len(trilha_raw)
                 else:
                     trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
 
@@ -745,4 +724,33 @@ def acompanhar():
                 "rota_planejada": rota_planejada,
             })
 
-    return jsonify({"ok": True, "ordens": items})
+        # Zonas de cobertura ativas (para desenhar no mapa do portal)
+        cur.execute("""
+            SELECT id, nome, taxa, cor, poligono
+            FROM areas_cobertura
+            WHERE status = 'ATIVO'
+        """)
+        zonas = []
+        for r in (dict(x) for x in cur.fetchall()):
+            poligono = r.get("poligono")
+            if isinstance(poligono, str):
+                try:
+                    poligono = json.loads(poligono)
+                except Exception:
+                    poligono = None
+            if not poligono or not isinstance(poligono, list) or len(poligono) < 3:
+                continue
+            pts = poligono
+            if isinstance(poligono[0], dict) and "coordinates" in poligono:
+                pts = poligono["coordinates"][0]
+            elif not isinstance(poligono[0], (list, tuple)):
+                continue
+            zonas.append({
+                "id": r["id"],
+                "nome": r.get("nome"),
+                "taxa": float(r.get("taxa") or 0),
+                "cor": r.get("cor") or "#00d4aa",
+                "poligono": [[p[0], p[1]] for p in pts],
+            })
+
+    return jsonify({"ok": True, "ordens": items, "zonas": zonas})
