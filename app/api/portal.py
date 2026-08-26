@@ -588,8 +588,26 @@ def rastrear_ordem(ordem_id: int):
                     WHERE usuario_id = %s
                     ORDER BY criado_em DESC LIMIT 50
                 """, (o["entregador_id"],))
-                trilha = [{"lat": float(t["lat"]), "lng": float(t["lng"])} for t in cur.fetchall()]
-                trilha.reverse()
+                rows = cur.fetchall()
+                trilha_raw = [(float(t["lat"]), float(t["lng"])) for t in rows]
+                trilha_raw.reverse()
+
+                # Snap-to-roads via OSRM
+                trilha = []
+                if len(trilha_raw) >= 2:
+                    from app.services.mapmatching import snap_to_road, calcular_rota
+                    snapped = snap_to_road(trilha_raw)
+                    if snapped:
+                        trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
+                    else:
+                        # Fallback: rota planejada entre primeiro e ultimo ponto
+                        rota = calcular_rota(trilha_raw[0], trilha_raw[-1])
+                        if rota:
+                            trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
+                        else:
+                            trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                else:
+                    trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
                 entregador = {
                     "nome": ent.get("nome"),
                     "localizacao": loc,
@@ -684,13 +702,19 @@ def acompanhar():
 
                 # Snap-to-roads
                 if len(trilha_raw) >= 2:
-                    from app.services.mapmatching import snap_to_road
+                    from app.services.mapmatching import snap_to_road, calcular_rota
                     snapped = snap_to_road(trilha_raw)
                     if snapped:
                         trilha = [{"lat": p[0], "lng": p[1]} for p in snapped]
                         trilha_snapped = True
                     else:
-                        trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
+                        # Fallback: rota planejada entre primeiro e ultimo ponto
+                        rota = calcular_rota(trilha_raw[0], trilha_raw[-1])
+                        if rota:
+                            trilha = [{"lat": p[0], "lng": p[1]} for p in rota]
+                            trilha_snapped = True
+                        else:
+                            trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
                 else:
                     trilha = [{"lat": p[0], "lng": p[1]} for p in trilha_raw]
 

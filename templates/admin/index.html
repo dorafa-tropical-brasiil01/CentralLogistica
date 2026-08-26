@@ -561,19 +561,16 @@
   <div class="modal">
     <h3 id="empModalTitle">Nova empresa</h3>
     <input type="hidden" id="empIdField" />
-    <div class="form-group"><label>ID (slug)</label><input id="empIdInput" type="text" placeholder="empresa-teste" /></div>
+    <input type="hidden" id="empLatInput" />
+    <input type="hidden" id="empLngInput" />
+    <div class="form-group"><label>Código</label><input id="empIdInput" type="text" placeholder="Ex: dorafa" /><small style="color:var(--text-3);font-size:11px">Identificador único da empresa (sem espaços)</small></div>
     <div class="form-group"><label>Nome</label><input id="empNomeInput" type="text" placeholder="Empresa Teste" /></div>
     <div class="form-group"><label>CNPJ</label><input id="empCnpjInput" type="text" placeholder="00.000.000/0001-00" /></div>
     <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
     <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text-2)">Endereço e localização</div>
     <div class="form-group"><label>Endereço (rua, número, bairro)</label><input id="empRuaInput" type="text" placeholder="Rua das Flores, 123 - Centro" /></div>
     <div class="form-group"><label>Cidade</label><input id="empCidadeInput" type="text" placeholder="Goiânia" /></div>
-    <div class="form-group"><label>URL do Google Maps (origem)</label><input id="empMapsUrlInput" type="text" placeholder="Cole o link do Google Maps do estabelecimento" onblur="extractCoordsFromMaps()" /></div>
-    <div class="form-row">
-      <div class="form-group" style="flex:1"><label>Latitude</label><input id="empLatInput" type="text" placeholder="-16.7364" /></div>
-      <div class="form-group" style="flex:1"><label>Longitude</label><input id="empLngInput" type="text" placeholder="-49.2648" /></div>
-    </div>
-    <small style="color:var(--text-3);font-size:11px;display:block;margin-bottom:8px">Cole a URL do Google Maps e as coordenadas serão extraídas automaticamente. Você também pode digitar manualmente.</small>
+    <div class="form-group"><label>Link do Google Maps do estabelecimento</label><input id="empMapsUrlInput" type="text" placeholder="Cole o link do Google Maps aqui" onblur="extractCoordsFromMaps()" /><small style="color:var(--text-3);font-size:11px">Abra o Google Maps, busque o endereço, clique em "Compartilhar" e cole o link. As coordenadas são extraídas automaticamente.</small></div>
     <div class="form-group"><label>Status</label><select id="empAtivoInput"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancelar</button>
@@ -861,10 +858,10 @@ async function loadMonitor() {
       }
     });
 
-    // Marcadores de entregadores
+    // Marcadores de entregadores (motoboy)
     j.entregadores.forEach(e => {
       if (!e.localizacao) return;
-      const icon = L.divIcon({ className: '', html: '<div class="driver-marker">' + (e.nome || 'E').charAt(0) + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+      const icon = L.divIcon({ className: '', html: '<div style="background:#3a86ff;color:#fff;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)">🏍️</div>', iconSize: [36, 36], iconAnchor: [18, 18] });
       L.marker([e.localizacao.lat, e.localizacao.lng], { icon }).addTo(markersLayer).bindPopup('<b>' + e.nome + '</b><br>Entregador' + (e.corrida_ativa ? '<br>Status: ' + e.corrida_ativa : '') + (e.trilha ? '<br>Trilha: ' + e.trilha.length + ' pontos' : ''));
       // Trilha do percurso (se tiver 2+ pontos)
       if (e.trilha && e.trilha.length > 1) {
@@ -1867,7 +1864,7 @@ async function loadEmpresasModule() {
 
 function extractCoordsFromMaps() {
   const url = document.getElementById('empMapsUrlInput').value.trim();
-  if (!url) return;
+  if (!url) { document.getElementById('empLatInput').value = ''; document.getElementById('empLngInput').value = ''; return; }
   const m = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/) || url.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/) || url.match(/(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (m) {
     document.getElementById('empLatInput').value = m[1];
