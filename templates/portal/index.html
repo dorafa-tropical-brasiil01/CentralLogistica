@@ -543,7 +543,7 @@ let destMarker = null;
 function initEntMap() {
   if (entMap) { entMap.remove(); entMap = null; }
   entMap = L.map('entMap', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 13);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(entMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(entMap);
 }
 
 function atualizarMapa(coordsDest, coordsOrig) {
@@ -762,7 +762,7 @@ function initMainMap() {
   const center = empresaCoords ? [empresaCoords.lat, empresaCoords.lng] : [-16.7364, -49.2648];
   const zoom = empresaCoords ? 14 : 13;
   mainMap = L.map('map', { zoomControl: true, attributionControl: false }).setView(center, zoom);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(mainMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(mainMap);
   mainLayers = L.layerGroup().addTo(mainMap);
   mainMap._userInteracted = false;
   mainMap.on('zoomstart', () => { mainMap._userInteracted = true; });
@@ -872,7 +872,7 @@ async function atualizarRastrear(ordemId) {
     // Mapa
     if (!rastrearMap) {
       rastrearMap = L.map('rastrearMap', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 14);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(rastrearMap);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(rastrearMap);
       rastrearLayers = L.layerGroup().addTo(rastrearMap);
       setTimeout(() => rastrearMap.invalidateSize(), 100);
     }

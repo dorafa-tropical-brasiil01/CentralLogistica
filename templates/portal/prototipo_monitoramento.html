@@ -332,7 +332,7 @@
   <script>
     // --- MAPA ---
     const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-16.7364, -49.2648], 14);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map);
     const markersLayer = L.layerGroup().addTo(map);
     const routesLayer = L.layerGroup().addTo(map);
 

@@ -444,10 +444,12 @@
 
       // Tile layer (dark mode friendly)
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const tileUrl = isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-      L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+      const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      const tl = L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abc' }).addTo(map);
+      if (isDark) {
+        tl.on('tileload', function(e) { e.tile.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)'; });
+        tl.getContainer().style.filter = 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)';
+      }
 
       markersLayer = L.layerGroup().addTo(map);
       zonesLayer = L.layerGroup().addTo(map);
