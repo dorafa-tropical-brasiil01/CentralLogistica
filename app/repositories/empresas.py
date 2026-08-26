@@ -42,13 +42,16 @@ def create(empresa_id: str, nome: str, **campos: Any) -> dict[str, Any]:
 
 
 def update(empresa_id: str, **campos: Any) -> dict[str, Any] | None:
-    """Atualiza nome, cnpj e ativo de uma empresa."""
+    """Atualiza nome, cnpj, ativo e endereco de uma empresa."""
     colunas = []
     valores: list[Any] = []
     for col in ("nome", "cnpj", "ativo"):
         if col in campos and campos[col] is not None:
             colunas.append(f"{col} = %s")
             valores.append(campos[col])
+    if "endereco" in campos and campos["endereco"] is not None:
+        colunas.append("endereco = %s")
+        valores.append(psycopg2.extras.Json(campos["endereco"]))
     if not colunas:
         return get(empresa_id)
     valores.append(empresa_id)

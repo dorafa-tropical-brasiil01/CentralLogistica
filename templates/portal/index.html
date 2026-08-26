@@ -336,8 +336,9 @@
         <small style="color:var(--text-3);font-size:11px">Abra o Google Maps, busque o endereço, clique em "Compartilhar" e cole o link aqui.</small>
       </div>
       <div class="form-group">
-        <label>Endereço de origem (Google Maps)</label>
-        <input id="entOriginUrl" type="text" placeholder="Cole o link do Google Maps da origem (seu estabelecimento)" />
+        <label>Endereço de origem (Google Maps) <span style="color:var(--accent-2);font-size:11px">auto</span></label>
+        <input id="entOriginUrl" type="text" placeholder="Preenchido automaticamente com o endereço do seu estabelecimento" />
+        <small style="color:var(--text-3);font-size:11px">Origem do seu estabelecimento (cadastro). Você pode alterar se necessário.</small>
       </div>
       <div class="form-group">
         <label>Endereço completo (referência)</label>
@@ -527,6 +528,29 @@ function openModal(id) {
   document.getElementById(id).classList.add('open');
   if (id === 'extratoModal') loadExtrato();
   if (id === 'recargasModal') loadRecargas();
+  if (id === 'novaModal') preencherOrigemAutomatica();
+}
+
+let empresaMapsUrl = null;
+
+function preencherOrigemAutomatica() {
+  const originInput = document.getElementById('entOriginUrl');
+  if (!originInput) return;
+  // Se já tem valor digitado, não sobrescreve
+  if (originInput.value.trim()) return;
+  // Tenta usar maps_url do endereco da empresa (carregado em loadMe)
+  if (empresaMapsUrl) {
+    originInput.value = empresaMapsUrl;
+    originInput.placeholder = 'Preenchido automaticamente com o endereço do seu estabelecimento';
+    return;
+  }
+  // Se tem coords mas não tem maps_url, gera URL
+  if (empresaCoords) {
+    const url = `https://www.google.com/maps?q=${empresaCoords.lat},${empresaCoords.lng}`;
+    originInput.value = url;
+    originInput.placeholder = 'Preenchido automaticamente com o endereço do seu estabelecimento';
+    return;
+  }
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -1004,8 +1028,16 @@ async function checkRecargaStatus() {
 // INIT
 if (token) {
   api('/me').then(r => r.ok ? r.json() : null).then(j => {
-    if (j && j.ok) { currentUser = j.usuario; showApp(); }
-    else doLogout();
+    if (j && j.ok) {
+      currentUser = j.usuario;
+      // Carrega maps_url do endereco da empresa para auto-preencher origem
+      const end = j.usuario.empresa_endereco;
+      if (end) {
+        if (end.maps_url) empresaMapsUrl = end.maps_url;
+        else if (end.lat && end.lng) empresaCoords = { lat: end.lat, lng: end.lng };
+      }
+      showApp();
+    } else doLogout();
   }).catch(() => doLogout());
 }
 </script>

@@ -1084,7 +1084,7 @@ def listar_empresas():
 
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, nome, cnpj, ativo, config FROM empresas ORDER BY nome")
+        cur.execute("SELECT id, nome, cnpj, ativo, config, endereco FROM empresas ORDER BY nome")
         items = []
         for r in (dict(x) for x in cur.fetchall()):
             cfg = r.get("config")
@@ -1093,11 +1093,19 @@ def listar_empresas():
                 try: cfg = _json.loads(cfg)
                 except Exception: cfg = {}
             cfg = cfg or {}
+            endereco = r.get("endereco")
+            if isinstance(endereco, str):
+                try:
+                    import json as _json2
+                    endereco = _json2.loads(endereco)
+                except Exception:
+                    endereco = None
             items.append({
                 "id": r["id"],
                 "nome": r["nome"],
                 "cnpj": r.get("cnpj"),
                 "ativo": r.get("ativo"),
+                "endereco": endereco,
                 "comissao_entregador_pct": float(cfg.get("comissao_entregador_pct", 70.0)),
             })
     return jsonify({"ok": True, "empresas": items})
@@ -1206,7 +1214,7 @@ def criar_empresa():
         return _err("empresa_ja_existe", 409)
 
     try:
-        emp = empresas_repo.create(empresa_id, nome, cnpj=data.get("cnpj"))
+        emp = empresas_repo.create(empresa_id, nome, cnpj=data.get("cnpj"), endereco=_parse_endereco(data))
     except Exception as e:
         logging.getLogger("admin").exception("Erro ao criar empresa")
         return _err(str(e), 500)
@@ -1238,6 +1246,8 @@ def editar_empresa(empresa_id: str):
         campos["cnpj"] = (data.get("cnpj") or "").strip() or None
     if "ativo" in data:
         campos["ativo"] = bool(data.get("ativo"))
+    if "endereco" in data:
+        campos["endereco"] = _parse_endereco(data)
 
     if not campos:
         return _err("nada_para_atualizar", 400)
@@ -1308,6 +1318,35 @@ def salvar_frete_empresa(empresa_id: str):
     return jsonify({"ok": True, "frete": cfg})
 
 
+def _parse_endereco(data: dict) -> dict | None:
+    """Extrai endereco do payload de criar/editar empresa."""
+    endereco = data.get("endereco")
+    if isinstance(endereco, dict):
+        return endereco
+    # Formato flat: maps_url, rua, cidade, lat, lng
+    maps_url = (data.get("maps_url") or "").strip()
+    rua = (data.get("rua") or "").strip()
+    cidade = (data.get("cidade") or "").strip()
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if not maps_url and not rua and lat is None:
+        return None
+    result: dict[str, Any] = {}
+    if maps_url:
+        result["maps_url"] = maps_url
+    if rua:
+        result["rua"] = rua
+    if cidade:
+        result["cidade"] = cidade
+    if lat is not None and lng is not None:
+        try:
+            result["lat"] = float(lat)
+            result["lng"] = float(lng)
+        except (TypeError, ValueError):
+            pass
+    return result or None
+
+
 def _serializar_empresa(row: dict) -> dict:
     """Serializa uma empresa para resposta JSON do admin."""
     cfg = row.get("config")
@@ -1317,11 +1356,18 @@ def _serializar_empresa(row: dict) -> dict:
         except Exception:
             cfg = {}
     cfg = cfg or {}
+    endereco = row.get("endereco")
+    if isinstance(endereco, str):
+        try:
+            endereco = json.loads(endereco)
+        except Exception:
+            endereco = None
     return {
         "id": row["id"],
         "nome": row["nome"],
         "cnpj": row.get("cnpj"),
         "ativo": row.get("ativo"),
+        "endereco": endereco,
         "comissao_entregador_pct": float(cfg.get("comissao_entregador_pct", 70.0)),
     }
 

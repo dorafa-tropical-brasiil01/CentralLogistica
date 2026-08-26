@@ -564,6 +564,16 @@
     <div class="form-group"><label>ID (slug)</label><input id="empIdInput" type="text" placeholder="empresa-teste" /></div>
     <div class="form-group"><label>Nome</label><input id="empNomeInput" type="text" placeholder="Empresa Teste" /></div>
     <div class="form-group"><label>CNPJ</label><input id="empCnpjInput" type="text" placeholder="00.000.000/0001-00" /></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text-2)">Endereço e localização</div>
+    <div class="form-group"><label>Endereço (rua, número, bairro)</label><input id="empRuaInput" type="text" placeholder="Rua das Flores, 123 - Centro" /></div>
+    <div class="form-group"><label>Cidade</label><input id="empCidadeInput" type="text" placeholder="Goiânia" /></div>
+    <div class="form-group"><label>URL do Google Maps (origem)</label><input id="empMapsUrlInput" type="text" placeholder="Cole o link do Google Maps do estabelecimento" onblur="extractCoordsFromMaps()" /></div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Latitude</label><input id="empLatInput" type="text" placeholder="-16.7364" /></div>
+      <div class="form-group" style="flex:1"><label>Longitude</label><input id="empLngInput" type="text" placeholder="-49.2648" /></div>
+    </div>
+    <small style="color:var(--text-3);font-size:11px;display:block;margin-bottom:8px">Cole a URL do Google Maps e as coordenadas serão extraídas automaticamente. Você também pode digitar manualmente.</small>
     <div class="form-group"><label>Status</label><select id="empAtivoInput"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('empModal')">Cancelar</button>
@@ -1855,6 +1865,16 @@ async function loadEmpresasModule() {
   } catch { toast('Erro ao carregar empresas'); }
 }
 
+function extractCoordsFromMaps() {
+  const url = document.getElementById('empMapsUrlInput').value.trim();
+  if (!url) return;
+  const m = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/) || url.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/) || url.match(/(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) {
+    document.getElementById('empLatInput').value = m[1];
+    document.getElementById('empLngInput').value = m[2];
+  }
+}
+
 function openEmpresaModal() {
   document.getElementById('empIdField').value = '';
   document.getElementById('empModalTitle').textContent = 'Nova empresa';
@@ -1862,6 +1882,11 @@ function openEmpresaModal() {
   document.getElementById('empIdInput').disabled = false;
   document.getElementById('empNomeInput').value = '';
   document.getElementById('empCnpjInput').value = '';
+  document.getElementById('empRuaInput').value = '';
+  document.getElementById('empCidadeInput').value = '';
+  document.getElementById('empMapsUrlInput').value = '';
+  document.getElementById('empLatInput').value = '';
+  document.getElementById('empLngInput').value = '';
   document.getElementById('empAtivoInput').value = 'true';
   document.getElementById('empModal').classList.add('open');
 }
@@ -1878,6 +1903,12 @@ async function editEmpresa(id) {
     document.getElementById('empIdInput').disabled = true;
     document.getElementById('empNomeInput').value = e.nome;
     document.getElementById('empCnpjInput').value = e.cnpj || '';
+    const end = e.endereco || {};
+    document.getElementById('empRuaInput').value = end.rua || '';
+    document.getElementById('empCidadeInput').value = end.cidade || '';
+    document.getElementById('empMapsUrlInput').value = end.maps_url || '';
+    document.getElementById('empLatInput').value = end.lat || '';
+    document.getElementById('empLngInput').value = end.lng || '';
     document.getElementById('empAtivoInput').value = e.ativo ? 'true' : 'false';
     document.getElementById('empModal').classList.add('open');
   } catch { toast('Erro'); }
@@ -1889,14 +1920,26 @@ async function saveEmpresa() {
   const nome = document.getElementById('empNomeInput').value.trim();
   const cnpj = document.getElementById('empCnpjInput').value.trim();
   const ativo = document.getElementById('empAtivoInput').value === 'true';
+  const rua = document.getElementById('empRuaInput').value.trim();
+  const cidade = document.getElementById('empCidadeInput').value.trim();
+  const maps_url = document.getElementById('empMapsUrlInput').value.trim();
+  const lat = document.getElementById('empLatInput').value.trim();
+  const lng = document.getElementById('empLngInput').value.trim();
   if (!novoId || !nome) { toast('ID e nome obrigatórios'); return; }
+  const endereco = {};
+  if (rua) endereco.rua = rua;
+  if (cidade) endereco.cidade = cidade;
+  if (maps_url) endereco.maps_url = maps_url;
+  if (lat && lng) { endereco.lat = parseFloat(lat); endereco.lng = parseFloat(lng); }
+  const body = { nome, cnpj, ativo };
+  if (Object.keys(endereco).length) body.endereco = endereco;
   try {
     if (id) {
-      const r = await api('/empresas/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ nome, cnpj, ativo }) });
+      const r = await api('/empresas/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(body) });
       if (r.ok) { toast('Empresa salva'); closeModal('empModal'); loadEmpresasModule(); }
       else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
     } else {
-      const r = await api('/empresas', { method: 'POST', body: JSON.stringify({ id: novoId, nome, cnpj }) });
+      const r = await api('/empresas', { method: 'POST', body: JSON.stringify({ id: novoId, ...body }) });
       if (r.ok) { toast('Empresa criada'); closeModal('empModal'); loadEmpresasModule(); }
       else { const j = await r.json().catch(() => ({})); toast('Erro: ' + (j.error || r.status)); }
     }

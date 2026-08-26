@@ -85,12 +85,32 @@ def me():
     user = _requer_cliente()
     if not user:
         return _err("nao_autenticado", 401)
+    empresa_id = user.get("empresa_id")
+    empresa_endereco = None
+    empresa_nome = None
+    if empresa_id:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT nome, endereco FROM empresas WHERE id = %s", (empresa_id,))
+            row = cur.fetchone()
+            if row:
+                empresa_nome = row["nome"]
+                endereco = row["endereco"]
+                if isinstance(endereco, str):
+                    try:
+                        import json as _json
+                        endereco = _json.loads(endereco)
+                    except Exception:
+                        endereco = None
+                empresa_endereco = endereco
     return jsonify({"ok": True, "usuario": {
         "id": user["usuario_id"],
         "nome": user.get("nome"),
         "perfil": user.get("perfil"),
         "username": user.get("username"),
-        "empresa_id": user.get("empresa_id"),
+        "empresa_id": empresa_id,
+        "empresa_nome": empresa_nome,
+        "empresa_endereco": empresa_endereco,
     }})
 
 
