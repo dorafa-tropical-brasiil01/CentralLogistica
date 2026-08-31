@@ -5,6 +5,7 @@ __pycache__/
 venv/
 .env
 railway_env.json
+.commit_msg.txt
 *.log
 .DS_Store
 Thumbs.db
