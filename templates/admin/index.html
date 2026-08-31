@@ -219,6 +219,8 @@
             </select>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="loadMonitor()">↻ Atualizar</button>
+          <button class="btn btn-ghost btn-sm" id="toggleZonesBtn" onclick="toggleZones()">🗺️ Setores: ON</button>
+          <button class="btn btn-ghost btn-sm" id="addPinBtn" onclick="toggleAddPinMode()">📍 Adicionar pino</button>
           <button class="btn btn-ghost btn-sm" onclick="toggleFullscreen()">⛶ Tela cheia</button>
         </div>
         <div class="indicators">
@@ -636,6 +638,7 @@ let currentModule = 'monitor';
 let motoboySelecionado = null;  // ID do entregador selecionado para ver trilha
 let trilhaLayer = null;  // camada da trilha do motoboy selecionado
 let trilhaTimer = null;  // timer para atualizar trilha do motoboy selecionado
+let zonesVisible = true;  // controle de visibilidade das zonas no mapa
 let chartHora = null, chartDia = null;
 let empresasCache = [];
 
@@ -726,6 +729,38 @@ function initMap() {
   map._userInteracted = false;
   map.on('zoomstart', () => { map._userInteracted = true; });
   map.on('dragstart', () => { map._userInteracted = true; });
+
+  // Clique no mapa para adicionar pino (modo manual)
+  map.on('click', function(e) {
+    if (!_addPinMode) return;
+    if (_tempPin) _tempPin.remove();
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    const icon = L.divIcon({ className: '', html: '<div style="background:#e76f51;color:#fff;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"><span style="transform:rotate(45deg)">📍</span></div>', iconSize: [30, 30], iconAnchor: [15, 30] });
+    _tempPin = L.marker([lat, lng], { icon, draggable: true }).addTo(map);
+    _tempPin.bindPopup('<b>Pino manual</b><br><span id="tempPinAddr" style="font-size:11px;color:#666">Carregando endereço...</span><br><button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="copiarPinoManual()">📋 Copiar URL</button>');
+    _tempPin.openPopup();
+    reverseGeocode(lat, lng, function(addr) {
+      const el = document.getElementById('tempPinAddr');
+      if (el) el.textContent = addr || (lat.toFixed(5) + ', ' + lng.toFixed(5));
+    });
+    _tempPin.on('dragend', function(ev) {
+      const ll = ev.target.getLatLng();
+      reverseGeocode(ll.lat, ll.lng, function(addr) {
+        const el = document.getElementById('tempPinAddr');
+        if (el) el.textContent = addr || (ll.lat.toFixed(5) + ', ' + ll.lng.toFixed(5));
+      });
+    });
+    // Sai do modo automático após colocar o pino
+    toggleAddPinMode();
+  });
+}
+
+function copiarPinoManual() {
+  if (!_tempPin) return;
+  const ll = _tempPin.getLatLng();
+  const url = 'https://www.google.com/maps?q=' + ll.lat + ',' + ll.lng;
+  navigator.clipboard.writeText(url).then(() => toast('URL copiada: ' + url)).catch(() => toast(url));
 }
 
 async function carregarCidades() {
@@ -760,6 +795,78 @@ function toggleFullscreen() {
   setTimeout(() => { if (map) map.invalidateSize(); }, 200);
   const btn = event.target;
   btn.textContent = container.classList.contains('fullscreen') ? '⛶ Sair' : '⛶ Tela cheia';
+}
+
+function toggleZones() {
+  zonesVisible = !zonesVisible;
+  if (zonesVisible) {
+    if (map && zonesLayer && !map.hasLayer(zonesLayer)) zonesLayer.addTo(map);
+  } else {
+    if (map && zonesLayer && map.hasLayer(zonesLayer)) map.removeLayer(zonesLayer);
+  }
+  const btn = document.getElementById('toggleZonesBtn');
+  if (btn) btn.textContent = '🗺️ Setores: ' + (zonesVisible ? 'ON' : 'OFF');
+}
+
+// --- Pino manual: salvar coords ajustadas de uma ordem ---
+async function salvarCoordsOrdem(ordemId) {
+  // Encontra o marcador da ordem no mapa
+  let newCoords = null;
+  markersLayer.eachLayer(function(layer) {
+    if (layer._ordemId === ordemId && layer._newCoords) {
+      newCoords = layer._newCoords;
+    }
+  });
+  if (!newCoords) {
+    toast('Arraste o pino para ajustar a posição primeiro');
+    return;
+  }
+  if (!confirm('Salvar a nova posição de entrega?\nLat: ' + newCoords[0].toFixed(5) + '\nLng: ' + newCoords[1].toFixed(5))) return;
+  try {
+    const r = await api('/ordens/' + ordemId + '/coords', {
+      method: 'PUT',
+      body: JSON.stringify({ lat: newCoords[0], lng: newCoords[1] }),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      toast('Posição salva: ' + j.client_maps_url);
+      loadMonitor(); // re-renderiza com a nova posição
+    } else {
+      toast('Erro ao salvar posição');
+    }
+  } catch (err) {
+    toast('Erro: ' + err.message);
+  }
+}
+
+// --- Geocoding reverso (lat/lng -> endereco aproximado) ---
+let _rgCache = {};
+function reverseGeocode(lat, lng, callback) {
+  const key = lat.toFixed(4) + ',' + lng.toFixed(4);
+  if (_rgCache[key]) { callback(_rgCache[key]); return; }
+  const url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1';
+  fetch(url, { headers: { 'Accept-Language': 'pt-BR' } })
+    .then(r => r.json())
+    .then(data => {
+      const addr = data.display_name || '';
+      _rgCache[key] = addr;
+      callback(addr);
+    })
+    .catch(() => callback(''));
+}
+
+// --- Modo de adicionar pino por clique no mapa ---
+let _addPinMode = false;
+let _tempPin = null;
+function toggleAddPinMode() {
+  _addPinMode = !_addPinMode;
+  const btn = document.getElementById('addPinBtn');
+  if (btn) {
+    btn.style.background = _addPinMode ? 'var(--accent)' : '';
+    btn.textContent = _addPinMode ? '📍 Clique no mapa...' : '📍 Adicionar pino';
+  }
+  if (map) map.getContainer().style.cursor = _addPinMode ? 'crosshair' : '';
+  if (!_addPinMode && _tempPin) { _tempPin.remove(); _tempPin = null; }
 }
 
 document.addEventListener('keydown', e => {
@@ -819,14 +926,14 @@ async function selecionarMotoboy(entregadorId) {
   }
   motoboySelecionado = entregadorId;
   toast('Carregando trilha...');
-  await carregarTrilhaMotoboy(entregadorId);
+  await carregarTrilhaMotoboy(entregadorId, true);
   // Atualiza trilha a cada 15s (não 10s para não sobrecarregar OSRM)
   if (trilhaTimer) clearInterval(trilhaTimer);
-  trilhaTimer = setInterval(() => carregarTrilhaMotoboy(entregadorId), 15000);
+  trilhaTimer = setInterval(() => carregarTrilhaMotoboy(entregadorId, false), 15000);
   loadMonitor(); // re-renderiza para destacar o motoboy selecionado
 }
 
-async function carregarTrilhaMotoboy(entregadorId) {
+async function carregarTrilhaMotoboy(entregadorId, isPrimeiraCarga) {
   try {
     const r = await api('/entregadores/' + entregadorId + '/trilha?limit=50');
     const j = await r.json();
@@ -855,9 +962,9 @@ async function carregarTrilhaMotoboy(entregadorId) {
     L.marker(points[0], { icon: startIcon }).addTo(trilhaLayer).bindPopup('Início da trilha');
     L.marker(points[points.length - 1], { icon: endIcon }).addTo(trilhaLayer).bindPopup('Posição atual');
 
-    // Ajusta zoom para mostrar a trilha
+    // Ajusta zoom para mostrar a trilha — apenas na primeira carga ou se o usuário não interagiu
     const bounds = L.latLngBounds(points);
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+    if (bounds.isValid() && (isPrimeiraCarga || !map._userInteracted)) map.fitBounds(bounds, { padding: [50, 50] });
 
     toast('Trilha carregada: ' + j.trilha.length + ' pontos' + (j.snapped ? ' (seguindo ruas)' : ''));
   } catch (err) {
@@ -890,8 +997,8 @@ async function loadMonitor() {
     markersLayer.clearLayers(); routesLayer.clearLayers(); zonesLayer.clearLayers();
     // Não limpa trilhaLayer aqui — ela é gerenciada por selecionarMotoboy
 
-    // Zonas de cobertura (polígonos)
-    if (j.zonas && j.zonas.length) {
+    // Zonas de cobertura (polígonos) — só desenha se zonesVisible for true
+    if (zonesVisible && j.zonas && j.zonas.length) {
       j.zonas.forEach(z => {
         if (!z.poligono || z.poligono.length < 3) return;
         const poly = L.polygon(z.poligono, {
@@ -910,7 +1017,21 @@ async function loadMonitor() {
       const icon = L.divIcon({ className: '', html: '<div class="order-marker ' + cls + '">' + o.status.charAt(0) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
       const canAssign = (o.status === 'PENDENTE' || o.status === 'ATRIBUIDO');
       const assignHtml = canAssign ? `<br><button class="btn btn-accent btn-sm" style="margin-top:6px" onclick="openAssignModal(${o.id})">Atribuir</button>` : '';
-      L.marker(coords, { icon }).addTo(markersLayer).bindPopup('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status + assignHtml);
+      const m = L.marker(coords, { icon, draggable: true }).addTo(markersLayer);
+      m.bindPopup('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status + assignHtml +
+        `<br><button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="salvarCoordsOrdem(${o.id})">📍 Salvar posição</button>`);
+      m.on('dragend', function(ev) {
+        const ll = ev.target.getLatLng();
+        m._newCoords = [ll.lat, ll.lng];
+        // Geocoding reverso para mostrar endereco aproximado
+        reverseGeocode(ll.lat, ll.lng, function(addr) {
+          const popup = m.getPopup();
+          if (popup) popup.setContent('<b>' + o.protocolo + '</b><br>' + (o.payload || {}).cliente_nome + '<br>' + money(o.taxa) + '<br>' + o.status + assignHtml +
+            '<br><span style="font-size:11px;color:#666">📍 ' + (addr || ll.lat.toFixed(5) + ', ' + ll.lng.toFixed(5)) + '</span>' +
+            `<br><button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="salvarCoordsOrdem(${o.id})">📍 Salvar posição</button>`);
+        });
+      });
+      m._ordemId = o.id;
 
       // Origem (estabelecimento)
       if (o.origem_coords) {

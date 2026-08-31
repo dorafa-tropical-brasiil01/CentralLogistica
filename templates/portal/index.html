@@ -263,6 +263,9 @@
     <!-- TOGGLE SIDEBAR -->
     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀</button>
 
+    <!-- TOGGLE ZONAS -->
+    <button class="sidebar-toggle" id="toggleZonesBtn" style="top:60px" onclick="toggleZones()">🗺️</button>
+
     <!-- SIDEBAR -->
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
@@ -523,6 +526,17 @@ function toggleSidebar() {
   setTimeout(() => { if (mainMap) mainMap.invalidateSize(); }, 350);
 }
 
+function toggleZones() {
+  zonesVisible = !zonesVisible;
+  if (zonesVisible) {
+    if (mainMap && zonesLayer && !mainMap.hasLayer(zonesLayer)) zonesLayer.addTo(mainMap);
+  } else {
+    if (mainMap && zonesLayer && mainMap.hasLayer(zonesLayer)) mainMap.removeLayer(zonesLayer);
+  }
+  const btn = document.getElementById('toggleZonesBtn');
+  if (btn) btn.style.opacity = zonesVisible ? '1' : '0.5';
+}
+
 // Open/close modal
 function openModal(id) {
   document.getElementById(id).classList.add('open');
@@ -780,6 +794,7 @@ let rastrearLayers = null;
 let mainMap = null;
 let mainLayers = null;
 let zonesLayer = null;
+let zonesVisible = true;
 let acomInterval = null;
 
 function initMainMap() {
@@ -814,8 +829,8 @@ async function loadAcompanhar() {
     mainLayers.clearLayers();
     if (zonesLayer) zonesLayer.clearLayers();
 
-    // Zonas de cobertura (polígonos)
-    if (j.zonas && j.zonas.length) {
+    // Zonas de cobertura (polígonos) — só desenha se zonesVisible for true
+    if (zonesVisible && j.zonas && j.zonas.length) {
       j.zonas.forEach(z => {
         if (!z.poligono || z.poligono.length < 3) return;
         const poly = L.polygon(z.poligono, {

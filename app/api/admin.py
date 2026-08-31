@@ -1743,8 +1743,67 @@ def admin_atribuir_ordem(ordem_id: int):
 
 
 # ------------------------------------------------------------------
-# DEBUG: estado do push (inscrições por entregador)
+# Ajustar coordenadas de entrega (pino manual)
 # ------------------------------------------------------------------
+
+@bp.put("/ordens/<int:ordem_id>/coords")
+def admin_ajustar_coords(ordem_id: int):
+    """Admin ajusta manualmente as coordenadas de entrega de uma ordem."""
+    user = _requer_admin()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    data = request.get_json(silent=True) or {}
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if lat is None or lng is None:
+        return _err("lat_e_lng_obrigatorios", 400)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (TypeError, ValueError):
+        return _err("coordenadas_invalidas", 400)
+
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        return _err("coordenadas_fora_do_intervalo", 400)
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, payload_json FROM ordens_servico WHERE id = %s", (ordem_id,))
+        row = cur.fetchone()
+        if not row:
+            return _err("ordem_nao_encontrada", 404)
+        ordem = dict(row)
+        payload = ordem.get("payload_json") or {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+
+        # Atualiza o client_maps_url com as novas coordenadas
+        payload["client_maps_url"] = f"https://www.google.com/maps?q={lat},{lng}"
+        # Também armazena coords diretas para facilitar
+        payload["_coords_ajustadas"] = {"lat": lat, "lng": lng, "ajustado_por": user.get("username", "admin"), "ajustado_em": __import__("datetime").datetime.now().isoformat(timespec="seconds")}
+
+        cur.execute(
+            "UPDATE ordens_servico SET payload_json = %s WHERE id = %s RETURNING id, protocolo",
+            (json.dumps(payload, ensure_ascii=False), ordem_id),
+        )
+        updated = cur.fetchone()
+        if not updated:
+            return _err("falha_atualizar", 500)
+        result = dict(updated)
+
+    logging.getLogger("admin").info("Coords ajustadas: ordem %s por %s -> lat=%s lng=%s", ordem_id, user.get("username"), lat, lng)
+    return jsonify({
+        "ok": True,
+        "ordem_id": result.get("id"),
+        "protocolo": result.get("protocolo"),
+        "coords": {"lat": lat, "lng": lng},
+        "client_maps_url": payload["client_maps_url"],
+    })
 
 @bp.get("/push/debug")
 def admin_push_debug():
