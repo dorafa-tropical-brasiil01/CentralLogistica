@@ -209,7 +209,12 @@ def atualizar_status(
     entregador_id: int | None = None,
 ) -> dict[str, Any]:
     with transaction() as conn:
-        ordens.update_status(conn, ordem_id, status, entregador_id=entregador_id)
+        # Se o entregador cancela a corrida, a ordem volta para PENDENTE
+        # (disponível para outros entregadores) em vez de ficar CANCELADO.
+        if status == "CANCELADO":
+            ordens.update_status(conn, ordem_id, "PENDENTE", clear_entregador=True)
+        else:
+            ordens.update_status(conn, ordem_id, status, entregador_id=entregador_id)
 
         # Comissão automática do entregador quando entrega é concluída
         if status == "ENTREGUE":

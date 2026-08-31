@@ -263,9 +263,6 @@
     <!-- TOGGLE SIDEBAR -->
     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀</button>
 
-    <!-- TOGGLE ZONAS -->
-    <button class="sidebar-toggle" id="toggleZonesBtn" style="top:60px" onclick="toggleZones()">🗺️</button>
-
     <!-- SIDEBAR -->
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
@@ -274,6 +271,7 @@
           <button class="btn-nova" onclick="openModal('novaModal')">+ Nova</button>
         </div>
         <div class="sidebar-count" id="ordCount">0 ordens • R$ 0,00</div>
+        <button class="btn btn-ghost btn-sm" id="toggleZonesBtn" style="margin-top:8px;width:100%" onclick="toggleZones()">🗺️ Setores: ON</button>
       </div>
 
       <div class="filter-period">
@@ -534,7 +532,7 @@ function toggleZones() {
     if (mainMap && zonesLayer && mainMap.hasLayer(zonesLayer)) mainMap.removeLayer(zonesLayer);
   }
   const btn = document.getElementById('toggleZonesBtn');
-  if (btn) btn.style.opacity = zonesVisible ? '1' : '0.5';
+  if (btn) btn.textContent = '🗺️ Setores: ' + (zonesVisible ? 'ON' : 'OFF');
 }
 
 // Open/close modal
@@ -741,6 +739,27 @@ async function loadOrdens() {
 
 function filtrarOrdens() { renderOrdens(); }
 
+async function cancelarOrdem(ordemId) {
+  if (!confirm('Cancelar esta solicitação?\n\nComo nenhum entregador pegou ainda, não houve débito na carteira.')) return;
+  try {
+    const r = await api('/ordens/' + ordemId + '/cancelar', { method: 'POST' });
+    if (r.ok) {
+      const j = await r.json();
+      toast('Ordem ' + j.protocolo + ' cancelada');
+      loadOrdens();
+    } else {
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 403) {
+        toast('Não é possível cancelar: um entregador já pegou esta entrega. Entre em contato com a logística.');
+      } else {
+        toast('Erro: ' + (j.error || r.status));
+      }
+    }
+  } catch (err) {
+    toast('Erro: ' + err.message);
+  }
+}
+
 function renderOrdens() {
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const ordens = todasOrdens.filter(o => {
@@ -765,7 +784,9 @@ function renderOrdens() {
   } else {
     results.innerHTML = ordens.map(o => {
       const podeRastrear = ['ATRIBUIDO', 'EM_ROTA'].includes(o.status);
+      const podeCancelar = o.status === 'PENDENTE';
       const btnRastrear = podeRastrear ? `<button class="btn btn-accent btn-sm" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="event.stopPropagation();rastrear(${o.id})">📍 Rastrear</button>` : '';
+      const btnCancelar = podeCancelar ? `<button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:11px;margin-top:6px;margin-left:6px" onclick="event.stopPropagation();cancelarOrdem(${o.id})">✕ Cancelar</button>` : '';
       return `<div class="ord-card" onclick="rastrear(${o.id})">
         <div class="ord-card-header">
           <div class="ord-protocolo">${o.protocolo}</div>
@@ -779,7 +800,7 @@ function renderOrdens() {
           </div>
           <div class="ord-taxa">${money(o.taxa)}</div>
         </div>
-        ${btnRastrear}
+        ${btnRastrear}${btnCancelar}
       </div>`;
     }).join('');
   }

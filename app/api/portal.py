@@ -634,6 +634,68 @@ def rastrear_ordem(ordem_id: int):
 
 
 # ============================================================
+# Cancelar ordem — só se ainda não foi atribuída a um entregador
+# ============================================================
+
+@bp.post("/ordens/<int:ordem_id>/cancelar")
+def cancelar_ordem(ordem_id: int):
+    """Cliente cancela uma ordem pendente (sem entregador atribuído).
+
+    Regras:
+    - Só pode cancelar se status == PENDENTE (nenhum entregador pegou ainda).
+    - Se já foi atribuída (ATRIBUIDO/EM_ROTA), retorna erro 403.
+    - Não há débito na carteira pois a comissão só é gerada no ENTREGUE.
+    """
+    user = _requer_cliente()
+    if not user:
+        return _err("nao_autenticado", 401)
+
+    empresa_id = user.get("empresa_id")
+    if not empresa_id:
+        return _err("sem_empresa_vinculada", 400)
+
+    from app.core.db import transaction
+
+    with transaction() as conn:
+        cur = conn.cursor()
+        # Busca a ordem (só se pertence à empresa do cliente)
+        cur.execute(
+            "SELECT id, protocolo, status, entregador_id FROM ordens_servico WHERE id = %s AND empresa_id = %s",
+            (ordem_id, empresa_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return _err("ordem_nao_encontrada", 404)
+        o = dict(row)
+
+        # Só pode cancelar se ainda está pendente (sem entregador)
+        if o["status"] != "PENDENTE":
+            return _err(
+                "ordem_nao_pode_ser_cancelada",
+                403,
+            )
+
+        # Marca como CANCELADO
+        cur.execute(
+            "UPDATE ordens_servico SET status = 'CANCELADO', cancelado_em = NOW() WHERE id = %s RETURNING id, protocolo",
+            (ordem_id,),
+        )
+        updated = cur.fetchone()
+        if not updated:
+            return _err("falha_cancelar", 500)
+        result = dict(updated)
+
+    import logging as _log
+    _log.getLogger("portal").info("Ordem %s cancelada pelo cliente %s", ordem_id, user.get("username"))
+    return jsonify({
+        "ok": True,
+        "ordem_id": result["id"],
+        "protocolo": result["protocolo"],
+        "status": "CANCELADO",
+    })
+
+
+# ============================================================
 # Acompanhamento — todas as ordens ativas com rastreamento
 # ============================================================
 

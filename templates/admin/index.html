@@ -486,6 +486,7 @@
     <div class="form-group"><label>Senha</label><input id="entSenha" type="password" placeholder="Deixe vazio para não alterar" /></div>
     <div class="form-group"><label>Telefone</label><input id="entTelefone" type="text" /></div>
     <div class="form-group"><label>Empresa</label><select id="entEmpresa"></select></div>
+    <div class="form-group"><label>Status</label><select id="entAtivo"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('entModal')">Cancelar</button>
       <button class="btn btn-accent" onclick="saveEntregador()">Salvar</button>
@@ -904,7 +905,10 @@ async function limparDados() {
   if (!confirm('Tem certeza? Isso vai remover TODAS as ordens, comissões, localizações e inscrições push. Esta ação não pode ser desfeita.')) return;
   try {
     const r = await api('/limpar-dados', { method: 'POST' });
-    const j = await r.json();
+    if (!r.ok) { toast('Erro ao limpar dados (status ' + r.status + ')'); return; }
+    const text = await r.text();
+    let j;
+    try { j = JSON.parse(text); } catch { toast('Erro: resposta inválida do servidor'); return; }
     if (j.ok) {
       alert('Dados limpos!\nOrdens: ' + j.removidos.ordens + '\nComissões: ' + j.removidos.comissoes + '\nLocalizações: ' + j.removidos.localizacoes + '\nPush subs: ' + j.removidos.push_subscriptions);
       loadMonitor();
@@ -1939,6 +1943,8 @@ function openEntModal() {
   document.getElementById('entSenha').placeholder = 'Senha obrigatória';
   document.getElementById('entTelefone').value = '';
   fillEmpresaSelect('entEmpresa');
+  const ativoSel = document.getElementById('entAtivo');
+  if (ativoSel) ativoSel.value = 'true';
   document.getElementById('entModal').classList.add('open');
 }
 
@@ -1956,6 +1962,8 @@ async function editEnt(id) {
     document.getElementById('entSenha').placeholder = 'Deixe vazio para não alterar';
     document.getElementById('entTelefone').value = e.telefone || '';
     fillEmpresaSelect('entEmpresa', e.empresa_id);
+    const ativoSel = document.getElementById('entAtivo');
+    if (ativoSel) ativoSel.value = e.ativo ? 'true' : 'false';
     document.getElementById('entModal').classList.add('open');
   } catch { toast('Erro'); }
 }
@@ -1967,9 +1975,11 @@ async function saveEntregador() {
   const senha = document.getElementById('entSenha').value;
   const telefone = document.getElementById('entTelefone').value.trim();
   const empresa_id = document.getElementById('entEmpresa').value;
+  const ativoSelect = document.getElementById('entAtivo');
   if (!nome || !username) { toast('Nome e username obrigatórios'); return; }
   if (!id && !senha) { toast('Senha obrigatória para novo entregador'); return; }
   const data = { nome, username, telefone, empresa_id };
+  if (ativoSelect) data.ativo = ativoSelect.value === 'true';
   if (senha) data.senha = senha;
   try {
     const r = id ? await api('/entregadores/' + id, { method: 'PUT', body: JSON.stringify(data) }) : await api('/entregadores', { method: 'POST', body: JSON.stringify(data) });

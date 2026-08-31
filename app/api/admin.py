@@ -1086,14 +1086,14 @@ def criar_entregador():
 
 @bp.put("/entregadores/<int:entregador_id>")
 def atualizar_entregador(entregador_id: int):
-    """Atualiza entregador (nome, telefone, empresa, ativo, senha)."""
+    """Atualiza entregador (nome, username, telefone, empresa, ativo, senha)."""
     user = _requer_admin()
     if not user:
         return _err("nao_autenticado", 401)
 
     data = request.get_json(silent=True) or {}
     campos = {}
-    for k in ("nome", "telefone", "empresa_id", "ativo"):
+    for k in ("nome", "telefone", "empresa_id", "ativo", "username"):
         if k in data:
             campos[k] = data[k]
 

@@ -71,7 +71,7 @@ def get_by_solicitacao(empresa_id: str, solicitacao_id: str) -> dict[str, Any] |
         return dict(row) if row else None
 
 
-def update_status(conn, ordem_id: int, status: str, *, entregador_id: int | None = None) -> None:
+def update_status(conn, ordem_id: int, status: str, *, entregador_id: int | None = None, clear_entregador: bool = False) -> None:
     cur = conn.cursor()
     campos = ["status = %s"]
     valores: list[Any] = [status]
@@ -85,7 +85,11 @@ def update_status(conn, ordem_id: int, status: str, *, entregador_id: int | None
     elif status == "ATRIBUIDO":
         campos.append("atribuido_em = NOW()")
 
-    if entregador_id is not None:
+    if clear_entregador:
+        campos.append("entregador_id = NULL")
+        campos.append("atribuido_em = NULL")
+        campos.append("em_rota_em = NULL")
+    elif entregador_id is not None:
         campos.append("entregador_id = %s")
         valores.append(entregador_id)
 
